@@ -31,8 +31,7 @@ import java.util.List;
 
 /** Android implementation of the platform plugin. */
 public class PlatformPlugin {
-  public static final int DEFAULT_SYSTEM_UI =
-      View.SYSTEM_UI_FLAG_LAYOUT_STABLE;
+  public static final int DEFAULT_SYSTEM_UI = View.SYSTEM_UI_FLAG_LAYOUT_STABLE;
 
   private final Activity activity;
   private final PlatformChannel platformChannel;
@@ -284,10 +283,9 @@ public class PlatformPlugin {
 
       window.setDecorFitsSystemWindows(true);
       windowInsetsControllerCompat.hide(WindowInsets.Type.systemBars());
-      //Introduced in 30 and deprecated immediately in 31.
+      // Introduced in 30 and deprecated immediately in 31.
       windowInsetsControllerCompat.setSystemBarsBehavior(
-        WindowInsetsControllerCompat.BEHAVIOR_SHOW_BARS_BY_TOUCH
-      );
+          WindowInsetsControllerCompat.BEHAVIOR_SHOW_BARS_BY_TOUCH);
     } else if (systemUiMode == PlatformChannel.SystemUiMode.IMMERSIVE
         && Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
       // IMMERSIVE
@@ -301,8 +299,7 @@ public class PlatformPlugin {
       window.setDecorFitsSystemWindows(true);
       windowInsetsControllerCompat.hide(WindowInsets.Type.systemBars());
       windowInsetsControllerCompat.setSystemBarsBehavior(
-        WindowInsetsControllerCompat.BEHAVIOR_DEFAULT
-      );
+          WindowInsetsControllerCompat.BEHAVIOR_DEFAULT);
     } else if (systemUiMode == PlatformChannel.SystemUiMode.IMMERSIVE_STICKY
         && Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
       // STICKY IMMERSIVE
@@ -314,8 +311,7 @@ public class PlatformPlugin {
       window.setDecorFitsSystemWindows(true);
       windowInsetsControllerCompat.hide(WindowInsets.Type.systemBars());
       windowInsetsControllerCompat.setSystemBarsBehavior(
-        WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-      );
+          WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
     } else if (systemUiMode == PlatformChannel.SystemUiMode.EDGE_TO_EDGE
         && Build.VERSION.SDK_INT >= 29) {
       // EDGE TO EDGE
@@ -325,14 +321,13 @@ public class PlatformPlugin {
       // enforced in the overlay styling.
       window.setDecorFitsSystemWindows(false);
       windowInsetsControllerCompat.setSystemBarsBehavior(
-        WindowInsetsControllerCompat.BEHAVIOR_DEFAULT
-      );
+          WindowInsetsControllerCompat.BEHAVIOR_DEFAULT);
     } else {
       // When none of the conditions are matched, return without updating the system UI overlays.
       return;
     }
 
-    //mEnabledOverlays = enabledOverlays;
+    // mEnabledOverlays = enabledOverlays;
     updateSystemUiOverlays();
   }
 
