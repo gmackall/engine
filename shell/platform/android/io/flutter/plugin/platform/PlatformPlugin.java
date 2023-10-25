@@ -332,7 +332,7 @@ public class PlatformPlugin {
       return;
     }
 
-    mEnabledOverlays = enabledOverlays;
+    //mEnabledOverlays = enabledOverlays;
     updateSystemUiOverlays();
   }
 
@@ -344,8 +344,8 @@ public class PlatformPlugin {
         new WindowInsetsControllerCompat(window, view);
     // Start by assuming we want to hide all system overlays (like an immersive
     // game).
-    windowInsetsControllerCompat.hide(WindowInsetsCompat.Type.systemBars());
     window.setDecorFitsSystemWindows(true);
+    windowInsetsControllerCompat.hide(WindowInsetsCompat.Type.systemBars());
 
     // Re-add any desired system overlays.
     for (int i = 0; i < overlaysToShow.size(); ++i) {
