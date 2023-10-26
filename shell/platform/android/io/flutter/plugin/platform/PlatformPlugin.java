@@ -31,7 +31,7 @@ import java.util.List;
 
 /** Android implementation of the platform plugin. */
 public class PlatformPlugin {
-  public static final int DEFAULT_SYSTEM_UI = View.SYSTEM_UI_FLAG_LAYOUT_STABLE;
+  //public static final int DEFAULT_SYSTEM_UI = View.SYSTEM_UI_FLAG_LAYOUT_STABLE;
 
   private final Activity activity;
   private final PlatformChannel platformChannel;
@@ -159,7 +159,7 @@ public class PlatformPlugin {
     this.platformChannel.setPlatformMessageHandler(mPlatformMessageHandler);
     this.platformPluginDelegate = delegate;
 
-    mEnabledOverlays = DEFAULT_SYSTEM_UI;
+    //mEnabledOverlays = DEFAULT_SYSTEM_UI;
   }
 
   /**
@@ -319,6 +319,7 @@ public class PlatformPlugin {
       // SDK 29 and up will apply a translucent body scrim behind 2/3 button navigation bars
       // to ensure contrast with buttons on the nav and status bars, unless the contrast is not
       // enforced in the overlay styling.
+      windowInsetsControllerCompat.show(WindowInsets.Type.systemBars());
       window.setDecorFitsSystemWindows(false);
       windowInsetsControllerCompat.setSystemBarsBehavior(
           WindowInsetsControllerCompat.BEHAVIOR_DEFAULT);
