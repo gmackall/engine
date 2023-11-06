@@ -267,6 +267,7 @@ public class PlatformPlugin {
   }
 
   private void setSystemChromeEnabledSystemUIMode(PlatformChannel.SystemUiMode systemUiMode) {
+    Log.i(TAG, "HI GRAY, IN PlatformPlugin.setSystemChromeEnabledSystemUIMode, setting uimode to " + systemUiMode);
     Window window = activity.getWindow();
     View view = window.getDecorView();
     WindowInsetsControllerCompat windowInsetsControllerCompat =
@@ -342,6 +343,8 @@ public class PlatformPlugin {
     // game).
     window.setDecorFitsSystemWindows(true);
     windowInsetsControllerCompat.hide(WindowInsetsCompat.Type.systemBars());
+    windowInsetsControllerCompat.setAppearanceLightNavigationBars(false);
+    windowInsetsControllerCompat.setAppearanceLightStatusBars(false);
 
     // Re-add any desired system overlays.
     for (int i = 0; i < overlaysToShow.size(); ++i) {
@@ -424,6 +427,7 @@ public class PlatformPlugin {
       }
 
       if (systemChromeStyle.statusBarColor != null) {
+        Log.i(TAG, "HI GRAY, setting statusBarColor");
         window.setStatusBarColor(systemChromeStyle.statusBarColor);
       }
     }

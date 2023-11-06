@@ -696,23 +696,23 @@ public class FlutterView extends FrameLayout
 
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
       int mask =
-          android.view.WindowInsets.Type.navigationBars()
-              | android.view.WindowInsets.Type.statusBars();
+          android.view.WindowInsets.Type.navigationBars();
+              //| android.view.WindowInsets.Type.statusBars();
       Insets uiInsets = insets.getInsets(mask);
-      viewportMetrics.viewPaddingTop = uiInsets.top;
+      viewportMetrics.viewPaddingTop = 0;//uiInsets.top;
       viewportMetrics.viewPaddingRight = uiInsets.right;
       viewportMetrics.viewPaddingBottom = uiInsets.bottom;
       viewportMetrics.viewPaddingLeft = uiInsets.left;
 
       Insets imeInsets = insets.getInsets(android.view.WindowInsets.Type.ime());
-      viewportMetrics.viewInsetTop = imeInsets.top;
+      viewportMetrics.viewInsetTop = 0;//imeInsets.top;
       viewportMetrics.viewInsetRight = imeInsets.right;
       viewportMetrics.viewInsetBottom = imeInsets.bottom; // Typically, only bottom is non-zero
       viewportMetrics.viewInsetLeft = imeInsets.left;
 
       Insets systemGestureInsets =
           insets.getInsets(android.view.WindowInsets.Type.systemGestures());
-      viewportMetrics.systemGestureInsetTop = systemGestureInsets.top;
+      viewportMetrics.systemGestureInsetTop = 0;//systemGestureInsets.top;
       viewportMetrics.systemGestureInsetRight = systemGestureInsets.right;
       viewportMetrics.systemGestureInsetBottom = systemGestureInsets.bottom;
       viewportMetrics.systemGestureInsetLeft = systemGestureInsets.left;
@@ -771,7 +771,7 @@ public class FlutterView extends FrameLayout
       viewportMetrics.viewInsetLeft = 0;
     }
 
-    Log.v(
+    Log.i(
         TAG,
         "Updating window insets (onApplyWindowInsets()):\n"
             + "Status bar insets: Top: "
@@ -823,7 +823,7 @@ public class FlutterView extends FrameLayout
       viewportMetrics.viewInsetBottom = insets.bottom;
       viewportMetrics.viewInsetLeft = 0;
 
-      Log.v(
+      Log.i(
           TAG,
           "Updating window insets (fitSystemWindows()):\n"
               + "Status bar insets: Top: "
