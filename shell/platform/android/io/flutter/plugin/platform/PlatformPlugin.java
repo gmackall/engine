@@ -31,7 +31,7 @@ import java.util.List;
 
 /** Android implementation of the platform plugin. */
 public class PlatformPlugin {
-  //public static final int DEFAULT_SYSTEM_UI = View.SYSTEM_UI_FLAG_LAYOUT_STABLE;
+  // public static final int DEFAULT_SYSTEM_UI = View.SYSTEM_UI_FLAG_LAYOUT_STABLE;
 
   private final Activity activity;
   private final PlatformChannel platformChannel;
@@ -159,7 +159,7 @@ public class PlatformPlugin {
     this.platformChannel.setPlatformMessageHandler(mPlatformMessageHandler);
     this.platformPluginDelegate = delegate;
 
-    //mEnabledOverlays = DEFAULT_SYSTEM_UI;
+    // mEnabledOverlays = DEFAULT_SYSTEM_UI;
   }
 
   /**
@@ -267,7 +267,10 @@ public class PlatformPlugin {
   }
 
   private void setSystemChromeEnabledSystemUIMode(PlatformChannel.SystemUiMode systemUiMode) {
-    Log.i(TAG, "HI GRAY, IN PlatformPlugin.setSystemChromeEnabledSystemUIMode, setting uimode to " + systemUiMode);
+    Log.i(
+        TAG,
+        "HI GRAY, IN PlatformPlugin.setSystemChromeEnabledSystemUIMode, setting uimode to "
+            + systemUiMode);
     Window window = activity.getWindow();
     View view = window.getDecorView();
     WindowInsetsControllerCompat windowInsetsControllerCompat =
