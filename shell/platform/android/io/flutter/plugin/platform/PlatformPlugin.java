@@ -287,7 +287,7 @@ public class PlatformPlugin {
       // support will allow users to restore the system ui and dismiss the overlays.
       // Not compatible with top/bottom overlays enabled.
 
-      window.setDecorFitsSystemWindows(true);
+      window.setDecorFitsSystemWindows(false);
       windowInsetsControllerCompat.hide(WindowInsets.Type.systemBars());
       // Introduced in 30 and deprecated immediately in 31.
       windowInsetsControllerCompat.setSystemBarsBehavior(
@@ -302,7 +302,7 @@ public class PlatformPlugin {
       // support will allow users to restore the system ui and dismiss the overlays.
       // Not compatible with top/bottom overlays enabled.
 
-      window.setDecorFitsSystemWindows(true);
+      window.setDecorFitsSystemWindows(false);
       windowInsetsControllerCompat.hide(WindowInsets.Type.systemBars());
       windowInsetsControllerCompat.setSystemBarsBehavior(
           WindowInsetsControllerCompat.BEHAVIOR_DEFAULT);
@@ -314,7 +314,7 @@ public class PlatformPlugin {
       // the swipe gesture. The overlays cannot be dismissed, so adding callback support will
       // allow users to restore the system ui and dismiss the overlays.
       // Not compatible with top/bottom overlays enabled.
-      window.setDecorFitsSystemWindows(true);
+      window.setDecorFitsSystemWindows(false);
       windowInsetsControllerCompat.hide(WindowInsets.Type.systemBars());
       windowInsetsControllerCompat.setSystemBarsBehavior(
           WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
@@ -346,7 +346,7 @@ public class PlatformPlugin {
         new WindowInsetsControllerCompat(window, view);
     // Start by assuming we want to hide all system overlays (like an immersive
     // game).
-    window.setDecorFitsSystemWindows(true);
+    //window.setDecorFitsSystemWindows(true);
     windowInsetsControllerCompat.hide(WindowInsetsCompat.Type.systemBars());
     windowInsetsControllerCompat.setAppearanceLightNavigationBars(false);
     windowInsetsControllerCompat.setAppearanceLightStatusBars(false);
@@ -432,7 +432,7 @@ public class PlatformPlugin {
       }
 
       if (systemChromeStyle.statusBarColor != null) {
-        Log.i(TAG, "HI GRAY, setting statusBarColor");
+        Log.i(TAG, "HI GRAY, setting statusBarColor to " + systemChromeStyle.statusBarColor);
         window.setStatusBarColor(systemChromeStyle.statusBarColor);
       }
     }
