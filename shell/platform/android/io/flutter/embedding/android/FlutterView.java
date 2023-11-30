@@ -705,14 +705,14 @@ public class FlutterView extends FrameLayout
       viewportMetrics.viewPaddingLeft = uiInsets.left;
 
       Insets imeInsets = insets.getInsets(android.view.WindowInsets.Type.ime());
-      viewportMetrics.viewInsetTop = 0; // imeInsets.top;
+      viewportMetrics.viewInsetTop = imeInsets.top;
       viewportMetrics.viewInsetRight = imeInsets.right;
       viewportMetrics.viewInsetBottom = imeInsets.bottom; // Typically, only bottom is non-zero
       viewportMetrics.viewInsetLeft = imeInsets.left;
 
       Insets systemGestureInsets =
           insets.getInsets(android.view.WindowInsets.Type.systemGestures());
-      viewportMetrics.systemGestureInsetTop = 0; // systemGestureInsets.top;
+      viewportMetrics.systemGestureInsetTop = systemGestureInsets.top;
       viewportMetrics.systemGestureInsetRight = systemGestureInsets.right;
       viewportMetrics.systemGestureInsetBottom = systemGestureInsets.bottom;
       viewportMetrics.systemGestureInsetLeft = systemGestureInsets.left;
