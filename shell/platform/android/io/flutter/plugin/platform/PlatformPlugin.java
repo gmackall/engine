@@ -346,7 +346,7 @@ public class PlatformPlugin {
         new WindowInsetsControllerCompat(window, view);
     // Start by assuming we want to hide all system overlays (like an immersive
     // game).
-    //window.setDecorFitsSystemWindows(true);
+    // window.setDecorFitsSystemWindows(true);
     windowInsetsControllerCompat.hide(WindowInsetsCompat.Type.systemBars());
     windowInsetsControllerCompat.setAppearanceLightNavigationBars(false);
     windowInsetsControllerCompat.setAppearanceLightStatusBars(false);
