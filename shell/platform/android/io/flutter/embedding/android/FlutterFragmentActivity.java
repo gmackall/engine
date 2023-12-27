@@ -634,6 +634,7 @@ public class FlutterFragmentActivity extends FragmentActivity
   }
 
   @Override
+  @SuppressWarnings("MissingSuperCall")
   public void onUserLeaveHint() {
     flutterFragment.onUserLeaveHint();
   }

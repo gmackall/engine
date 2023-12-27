@@ -2,5 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#define STB_TRUETYPE_IMPLEMENTATION
-#include "third_party/stb/stb_truetype.h"
+#include "trig.h"
+
+namespace impeller {
+
+//
+
+}  // namespace impeller

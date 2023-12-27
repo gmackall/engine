@@ -10,6 +10,7 @@
 #include "impeller/renderer/command.h"
 #include "impeller/renderer/render_pass.h"
 #include "impeller/renderer/sampler_library.h"
+#include "impeller/renderer/vertex_buffer_builder.h"
 
 namespace impeller {
 
@@ -17,6 +18,7 @@ using GaussianBlurVertexShader = GaussianBlurPipeline::VertexShader;
 using GaussianBlurFragmentShader = GaussianBlurPipeline::FragmentShader;
 
 namespace {
+
 SamplerDescriptor MakeSamplerDescriptor(MinMagFilter filter,
                                         SamplerAddressMode address_mode) {
   SamplerDescriptor sampler_desc;
@@ -33,23 +35,43 @@ void BindVertices(Command& cmd,
                   std::initializer_list<typename T::PerVertexData>&& vertices) {
   VertexBufferBuilder<typename T::PerVertexData> vtx_builder;
   vtx_builder.AddVertices(vertices);
-  auto vtx_buffer = vtx_builder.CreateVertexBuffer(host_buffer);
-  cmd.BindVertices(vtx_buffer);
+  cmd.BindVertices(vtx_builder.CreateVertexBuffer(host_buffer));
 }
 
-Matrix MakeAnchorScale(const Point& anchor, Vector2 scale) {
-  return Matrix::MakeTranslation({anchor.x, anchor.y, 0}) *
-         Matrix::MakeScale(scale) *
-         Matrix::MakeTranslation({-anchor.x, -anchor.y, 0});
+void SetTileMode(SamplerDescriptor* descriptor,
+                 const ContentContext& renderer,
+                 Entity::TileMode tile_mode) {
+  switch (tile_mode) {
+    case Entity::TileMode::kDecal:
+      if (renderer.GetDeviceCapabilities().SupportsDecalSamplerAddressMode()) {
+        descriptor->width_address_mode = SamplerAddressMode::kDecal;
+        descriptor->height_address_mode = SamplerAddressMode::kDecal;
+      }
+      break;
+    case Entity::TileMode::kClamp:
+      descriptor->width_address_mode = SamplerAddressMode::kClampToEdge;
+      descriptor->height_address_mode = SamplerAddressMode::kClampToEdge;
+      break;
+    case Entity::TileMode::kMirror:
+      descriptor->width_address_mode = SamplerAddressMode::kMirror;
+      descriptor->height_address_mode = SamplerAddressMode::kMirror;
+      break;
+    case Entity::TileMode::kRepeat:
+      descriptor->width_address_mode = SamplerAddressMode::kRepeat;
+      descriptor->height_address_mode = SamplerAddressMode::kRepeat;
+      break;
+  }
 }
 
+/// Makes a subpass that will render the scaled down input and add the
+/// transparent gutter required for the blur halo.
 std::shared_ptr<Texture> MakeDownsampleSubpass(
     const ContentContext& renderer,
     std::shared_ptr<Texture> input_texture,
     const SamplerDescriptor& sampler_descriptor,
     const Quad& uvs,
     const ISize& subpass_size,
-    const Vector2 padding) {
+    Entity::TileMode tile_mode) {
   ContentContext::SubpassCallback subpass_callback =
       [&](const ContentContext& renderer, RenderPass& pass) {
         HostBuffer& host_buffer = pass.GetTransientsBuffer();
@@ -65,24 +87,16 @@ std::shared_ptr<Texture> MakeDownsampleSubpass(
         frame_info.texture_sampler_y_coord_scale = 1.0;
         frame_info.alpha = 1.0;
 
-        // Insert transparent gutter around the downsampled image so the blur
-        // creates a halo effect.
-        Vector2 texture_size = Vector2(input_texture->GetSize());
-        Quad vertices =
-            MakeAnchorScale({0.5, 0.5},
-                            texture_size / (texture_size + padding * 2))
-                .Transform(
-                    {Point(0, 0), Point(1, 0), Point(0, 1), Point(1, 1)});
-
         BindVertices<TextureFillVertexShader>(cmd, host_buffer,
                                               {
-                                                  {vertices[0], uvs[0]},
-                                                  {vertices[1], uvs[1]},
-                                                  {vertices[2], uvs[2]},
-                                                  {vertices[3], uvs[3]},
+                                                  {Point(0, 0), uvs[0]},
+                                                  {Point(1, 0), uvs[1]},
+                                                  {Point(0, 1), uvs[2]},
+                                                  {Point(1, 1), uvs[3]},
                                               });
 
         SamplerDescriptor linear_sampler_descriptor = sampler_descriptor;
+        SetTileMode(&linear_sampler_descriptor, renderer, tile_mode);
         linear_sampler_descriptor.mag_filter = MinMagFilter::kLinear;
         linear_sampler_descriptor.min_filter = MinMagFilter::kLinear;
         TextureFillVertexShader::BindFrameInfo(
@@ -105,7 +119,14 @@ std::shared_ptr<Texture> MakeBlurSubpass(
     const ContentContext& renderer,
     std::shared_ptr<Texture> input_texture,
     const SamplerDescriptor& sampler_descriptor,
+    Entity::TileMode tile_mode,
     const GaussianBlurFragmentShader::BlurInfo& blur_info) {
+  if (blur_info.blur_sigma < kEhCloseEnough) {
+    return input_texture;
+  }
+
+  // TODO(gaaclarke): This blurs the whole image, but because we know the clip
+  //                  region we could focus on just blurring that.
   ISize subpass_size = input_texture->GetSize();
   ContentContext::SubpassCallback subpass_callback =
       [&](const ContentContext& renderer, RenderPass& pass) {
@@ -118,7 +139,15 @@ std::shared_ptr<Texture> MakeBlurSubpass(
         Command cmd;
         ContentContextOptions options = OptionsFromPass(pass);
         options.primitive_type = PrimitiveType::kTriangleStrip;
-        cmd.pipeline = renderer.GetGaussianBlurPipeline(options);
+
+        if (tile_mode == Entity::TileMode::kDecal &&
+            !renderer.GetDeviceCapabilities()
+                 .SupportsDecalSamplerAddressMode()) {
+          cmd.pipeline = renderer.GetGaussianBlurDecalPipeline(options);
+        } else {
+          cmd.pipeline = renderer.GetGaussianBlurPipeline(options);
+        }
+
         BindVertices<GaussianBlurVertexShader>(cmd, host_buffer,
                                                {
                                                    {Point(0, 0), Point(0, 0)},
@@ -127,10 +156,13 @@ std::shared_ptr<Texture> MakeBlurSubpass(
                                                    {Point(1, 1), Point(1, 1)},
                                                });
 
+        SamplerDescriptor linear_sampler_descriptor = sampler_descriptor;
+        linear_sampler_descriptor.mag_filter = MinMagFilter::kLinear;
+        linear_sampler_descriptor.min_filter = MinMagFilter::kLinear;
         GaussianBlurFragmentShader::BindTextureSampler(
             cmd, input_texture,
             renderer.GetContext()->GetSamplerLibrary()->GetSampler(
-                sampler_descriptor));
+                linear_sampler_descriptor));
         GaussianBlurVertexShader::BindFrameInfo(
             cmd, host_buffer.EmplaceUniform(frame_info));
         GaussianBlurFragmentShader::BindBlurInfo(
@@ -146,8 +178,11 @@ std::shared_ptr<Texture> MakeBlurSubpass(
 
 }  // namespace
 
-GaussianBlurFilterContents::GaussianBlurFilterContents(Scalar sigma)
-    : sigma_(sigma) {}
+GaussianBlurFilterContents::GaussianBlurFilterContents(
+    Scalar sigma_x,
+    Scalar sigma_y,
+    Entity::TileMode tile_mode)
+    : sigma_x_(sigma_x), sigma_y_(sigma_y), tile_mode_(tile_mode) {}
 
 // This value was extracted from Skia, see:
 //  * https://github.com/google/skia/blob/d29cc3fe182f6e8a8539004a6a4ee8251677a6fd/src/gpu/ganesh/GrBlurUtils.cpp#L2561-L2576
@@ -162,9 +197,11 @@ Scalar GaussianBlurFilterContents::CalculateScale(Scalar sigma) {
 std::optional<Rect> GaussianBlurFilterContents::GetFilterSourceCoverage(
     const Matrix& effect_transform,
     const Rect& output_limit) const {
-  Scalar blur_radius = CalculateBlurRadius(sigma_);
+  Vector2 scaled_sigma = {ScaleSigma(sigma_x_), ScaleSigma(sigma_y_)};
+  Vector2 blur_radius = {CalculateBlurRadius(scaled_sigma.x),
+                         CalculateBlurRadius(scaled_sigma.y)};
   Vector3 blur_radii =
-      effect_transform.Basis() * Vector3{blur_radius, blur_radius, 0.0};
+      effect_transform.Basis() * Vector3{blur_radius.x, blur_radius.y, 0.0};
   return output_limit.Expand(Point(blur_radii.x, blur_radii.y));
 }
 
@@ -181,10 +218,12 @@ std::optional<Rect> GaussianBlurFilterContents::GetFilterCoverage(
     return {};
   }
 
-  Scalar blur_radius = CalculateBlurRadius(sigma_);
+  Vector2 scaled_sigma = {ScaleSigma(sigma_x_), ScaleSigma(sigma_y_)};
+  Vector2 blur_radius = {CalculateBlurRadius(scaled_sigma.x),
+                         CalculateBlurRadius(scaled_sigma.y)};
   Vector3 blur_radii =
       (inputs[0]->GetTransform(entity).Basis() * effect_transform.Basis() *
-       Vector3{blur_radius, blur_radius, 0.0})
+       Vector3{blur_radius.x, blur_radius.y, 0.0})
           .Abs();
   return input_coverage.value().Expand(Point(blur_radii.x, blur_radii.y));
 }
@@ -200,74 +239,97 @@ std::optional<Entity> GaussianBlurFilterContents::RenderFilter(
     return std::nullopt;
   }
 
+  Vector2 scaled_sigma = {ScaleSigma(sigma_x_), ScaleSigma(sigma_y_)};
+  Vector2 blur_radius = {CalculateBlurRadius(scaled_sigma.x),
+                         CalculateBlurRadius(scaled_sigma.y)};
+  Vector2 padding(ceil(blur_radius.x), ceil(blur_radius.y));
+  Vector2 local_padding =
+      (entity.GetTransform().Basis() * effect_transform.Basis() * padding)
+          .Abs();
+
+  // Apply as much of the desired padding as possible from the source. This may
+  // be ignored so must be accounted for in the downsample pass by adding a
+  // transparent gutter.
+  std::optional<Rect> expanded_coverage_hint;
+  if (coverage_hint.has_value()) {
+    expanded_coverage_hint = coverage_hint->Expand(local_padding);
+  }
+
   std::optional<Snapshot> input_snapshot =
       inputs[0]->GetSnapshot("GaussianBlur", renderer, entity,
-                             /*coverage_limit=*/coverage_hint);
+                             /*coverage_limit=*/expanded_coverage_hint);
   if (!input_snapshot.has_value()) {
     return std::nullopt;
   }
 
-  if (sigma_ < kEhCloseEnough) {
+  if (scaled_sigma.x < kEhCloseEnough && scaled_sigma.y < kEhCloseEnough) {
     return Entity::FromSnapshot(input_snapshot.value(), entity.GetBlendMode(),
                                 entity.GetClipDepth());  // No blur to render.
   }
 
-  Scalar blur_radius = CalculateBlurRadius(sigma_);
-  Scalar desired_scalar = CalculateScale(sigma_);
-  // TODO(jonahwilliams): if scaling value is 1.0, then skip the downsample
+  Scalar desired_scalar =
+      std::min(CalculateScale(scaled_sigma.x), CalculateScale(scaled_sigma.y));
+  // TODO(jonahwilliams): If desired_scalar is 1.0 and we fully acquired the
+  // gutter from the expanded_coverage_hint, we can skip the downsample pass.
   // pass.
-
   Vector2 downsample_scalar(desired_scalar, desired_scalar);
-  Vector2 padding(ceil(blur_radius), ceil(blur_radius));
-
-  Vector2 padded_size =
-      Vector2(input_snapshot->texture->GetSize()) + 2.0 * padding;
-  Vector2 downsampled_size = padded_size * downsample_scalar;
-  // TODO(gaaclarke): I don't think we are correctly handling this fractional
-  //                  amount we are throwing away.
+  Rect source_rect = Rect::MakeSize(input_snapshot->texture->GetSize());
+  Rect source_rect_padded = source_rect.Expand(padding);
+  Matrix padding_snapshot_adjustment = Matrix::MakeTranslation(-padding);
+  // TODO(gaaclarke): The padding could be removed if we know it's not needed or
+  //   resized to account for the expanded_clip_coverage. There doesn't appear
+  //   to be the math to make those calculations though. The following
+  //   optimization works, but causes a shimmer as a result of
+  //   https://github.com/flutter/flutter/issues/140193 so it isn't applied.
+  //
+  //   !input_snapshot->GetCoverage()->Expand(-local_padding)
+  //     .Contains(coverage_hint.value()))
+  Vector2 downsampled_size = source_rect_padded.GetSize() * downsample_scalar;
   ISize subpass_size =
       ISize(round(downsampled_size.x), round(downsampled_size.y));
+  Vector2 effective_scalar =
+      Vector2(subpass_size) / source_rect_padded.GetSize();
 
-  Quad uvs =
-      CalculateUVs(inputs[0], entity, input_snapshot->texture->GetSize());
+  Quad uvs = CalculateUVs(inputs[0], entity, source_rect_padded,
+                          input_snapshot->texture->GetSize());
 
   std::shared_ptr<Texture> pass1_out_texture = MakeDownsampleSubpass(
       renderer, input_snapshot->texture, input_snapshot->sampler_descriptor,
-      uvs, subpass_size, padding);
+      uvs, subpass_size, tile_mode_);
 
   Vector2 pass1_pixel_size = 1.0 / Vector2(pass1_out_texture->GetSize());
 
-  std::shared_ptr<Texture> pass2_out_texture = MakeBlurSubpass(
-      renderer, pass1_out_texture, input_snapshot->sampler_descriptor,
-      GaussianBlurFragmentShader::BlurInfo{
-          .blur_uv_offset = Point(0.0, pass1_pixel_size.y),
-          .blur_sigma = sigma_ * downsample_scalar.y,
-          .blur_radius = blur_radius * downsample_scalar.y,
-          .step_size = 1.0,
-      });
+  std::shared_ptr<Texture> pass2_out_texture =
+      MakeBlurSubpass(renderer, pass1_out_texture,
+                      input_snapshot->sampler_descriptor, tile_mode_,
+                      GaussianBlurFragmentShader::BlurInfo{
+                          .blur_uv_offset = Point(0.0, pass1_pixel_size.y),
+                          .blur_sigma = scaled_sigma.y * effective_scalar.y,
+                          .blur_radius = blur_radius.y * effective_scalar.y,
+                          .step_size = 1.0,
+                      });
 
   // TODO(gaaclarke): Make this pass reuse the texture from pass1.
-  std::shared_ptr<Texture> pass3_out_texture = MakeBlurSubpass(
-      renderer, pass2_out_texture, input_snapshot->sampler_descriptor,
-      GaussianBlurFragmentShader::BlurInfo{
-          .blur_uv_offset = Point(pass1_pixel_size.x, 0.0),
-          .blur_sigma = sigma_ * downsample_scalar.x,
-          .blur_radius = blur_radius * downsample_scalar.x,
-          .step_size = 1.0,
-      });
+  std::shared_ptr<Texture> pass3_out_texture =
+      MakeBlurSubpass(renderer, pass2_out_texture,
+                      input_snapshot->sampler_descriptor, tile_mode_,
+                      GaussianBlurFragmentShader::BlurInfo{
+                          .blur_uv_offset = Point(pass1_pixel_size.x, 0.0),
+                          .blur_sigma = scaled_sigma.x * effective_scalar.x,
+                          .blur_radius = blur_radius.x * effective_scalar.x,
+                          .step_size = 1.0,
+                      });
 
   SamplerDescriptor sampler_desc = MakeSamplerDescriptor(
       MinMagFilter::kLinear, SamplerAddressMode::kClampToEdge);
 
   return Entity::FromSnapshot(
-      Snapshot{
-          .texture = pass3_out_texture,
-          .transform = input_snapshot->transform *
-                       Matrix::MakeTranslation({-padding.x, -padding.y, 0}) *
-                       Matrix::MakeScale(padded_size /
-                                         Vector2(pass1_out_texture->GetSize())),
-          .sampler_descriptor = sampler_desc,
-          .opacity = input_snapshot->opacity},
+      Snapshot{.texture = pass3_out_texture,
+               .transform = input_snapshot->transform *
+                            padding_snapshot_adjustment *
+                            Matrix::MakeScale(1 / effective_scalar),
+               .sampler_descriptor = sampler_desc,
+               .opacity = input_snapshot->opacity},
       entity.GetBlendMode(), entity.GetClipDepth());
 }
 
@@ -278,15 +340,27 @@ Scalar GaussianBlurFilterContents::CalculateBlurRadius(Scalar sigma) {
 Quad GaussianBlurFilterContents::CalculateUVs(
     const std::shared_ptr<FilterInput>& filter_input,
     const Entity& entity,
+    const Rect& source_rect,
     const ISize& texture_size) {
   Matrix input_transform = filter_input->GetLocalTransform(entity);
-  Rect snapshot_rect =
-      Rect::MakeXYWH(0, 0, texture_size.width, texture_size.height);
-  Quad coverage_quad = snapshot_rect.GetTransformedPoints(input_transform);
+  Quad coverage_quad = source_rect.GetTransformedPoints(input_transform);
 
   Matrix uv_transform = Matrix::MakeScale(
       {1.0f / texture_size.width, 1.0f / texture_size.height, 1.0f});
   return uv_transform.Transform(coverage_quad);
+}
+
+// This function was calculated by observing Skia's behavior. Its blur at 500
+// seemed to be 0.15.  Since we clamp at 500 I solved the quadratic equation
+// that puts the minima there and a f(0)=1.
+Scalar GaussianBlurFilterContents::ScaleSigma(Scalar sigma) {
+  // Limit the kernel size to 1000x1000 pixels, like Skia does.
+  Scalar clamped = std::min(sigma, 500.0f);
+  constexpr Scalar a = 3.4e-06;
+  constexpr Scalar b = -3.4e-3;
+  constexpr Scalar c = 1.f;
+  Scalar scalar = c + b * clamped + a * clamped * clamped;
+  return clamped * scalar;
 }
 
 }  // namespace impeller
