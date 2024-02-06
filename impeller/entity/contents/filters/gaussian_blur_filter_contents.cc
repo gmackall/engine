@@ -11,6 +11,7 @@
 #include "impeller/entity/texture_fill.vert.h"
 #include "impeller/renderer/command.h"
 #include "impeller/renderer/render_pass.h"
+#include "impeller/renderer/texture_mipmap.h"
 #include "impeller/renderer/vertex_buffer_builder.h"
 
 namespace impeller {
@@ -18,7 +19,12 @@ namespace impeller {
 using GaussianBlurVertexShader = KernelPipeline::VertexShader;
 using GaussianBlurFragmentShader = KernelPipeline::FragmentShader;
 
+const int32_t GaussianBlurFilterContents::kBlurFilterRequiredMipCount = 4;
+
 namespace {
+
+// 48 comes from kernel.glsl.
+const int32_t kMaxKernelSize = 48;
 
 SamplerDescriptor MakeSamplerDescriptor(MinMagFilter filter,
                                         SamplerAddressMode address_mode) {
@@ -31,12 +37,12 @@ SamplerDescriptor MakeSamplerDescriptor(MinMagFilter filter,
 }
 
 template <typename T>
-void BindVertices(Command& cmd,
+void BindVertices(RenderPass& pass,
                   HostBuffer& host_buffer,
                   std::initializer_list<typename T::PerVertexData>&& vertices) {
   VertexBufferBuilder<typename T::PerVertexData> vtx_builder;
   vtx_builder.AddVertices(vertices);
-  cmd.BindVertices(vtx_builder.CreateVertexBuffer(host_buffer));
+  pass.SetVertexBuffer(vtx_builder.CreateVertexBuffer(host_buffer));
 }
 
 void SetTileMode(SamplerDescriptor* descriptor,
@@ -77,18 +83,17 @@ fml::StatusOr<RenderTarget> MakeDownsampleSubpass(
       [&](const ContentContext& renderer, RenderPass& pass) {
         HostBuffer& host_buffer = renderer.GetTransientsBuffer();
 
-        Command cmd;
-        DEBUG_COMMAND_INFO(cmd, "Gaussian blur downsample");
+        pass.SetCommandLabel("Gaussian blur downsample");
         auto pipeline_options = OptionsFromPass(pass);
         pipeline_options.primitive_type = PrimitiveType::kTriangleStrip;
-        cmd.pipeline = renderer.GetTexturePipeline(pipeline_options);
+        pass.SetPipeline(renderer.GetTexturePipeline(pipeline_options));
 
         TextureFillVertexShader::FrameInfo frame_info;
         frame_info.mvp = Matrix::MakeOrthographic(ISize(1, 1));
         frame_info.texture_sampler_y_coord_scale = 1.0;
         frame_info.alpha = 1.0;
 
-        BindVertices<TextureFillVertexShader>(cmd, host_buffer,
+        BindVertices<TextureFillVertexShader>(pass, host_buffer,
                                               {
                                                   {Point(0, 0), uvs[0]},
                                                   {Point(1, 0), uvs[1]},
@@ -101,15 +106,13 @@ fml::StatusOr<RenderTarget> MakeDownsampleSubpass(
         linear_sampler_descriptor.mag_filter = MinMagFilter::kLinear;
         linear_sampler_descriptor.min_filter = MinMagFilter::kLinear;
         TextureFillVertexShader::BindFrameInfo(
-            cmd, host_buffer.EmplaceUniform(frame_info));
+            pass, host_buffer.EmplaceUniform(frame_info));
         TextureFillFragmentShader::BindTextureSampler(
-            cmd, input_texture,
+            pass, input_texture,
             renderer.GetContext()->GetSamplerLibrary()->GetSampler(
                 linear_sampler_descriptor));
 
-        pass.AddCommand(std::move(cmd));
-
-        return true;
+        return pass.Draw().ok();
       };
   fml::StatusOr<RenderTarget> render_target = renderer.MakeSubpass(
       "Gaussian Blur Filter", subpass_size, subpass_callback);
@@ -141,19 +144,18 @@ fml::StatusOr<RenderTarget> MakeBlurSubpass(
 
         HostBuffer& host_buffer = renderer.GetTransientsBuffer();
 
-        Command cmd;
         ContentContextOptions options = OptionsFromPass(pass);
         options.primitive_type = PrimitiveType::kTriangleStrip;
 
         if (tile_mode == Entity::TileMode::kDecal &&
             !renderer.GetDeviceCapabilities()
                  .SupportsDecalSamplerAddressMode()) {
-          cmd.pipeline = renderer.GetKernelDecalPipeline(options);
+          pass.SetPipeline(renderer.GetKernelDecalPipeline(options));
         } else {
-          cmd.pipeline = renderer.GetKernelPipeline(options);
+          pass.SetPipeline(renderer.GetKernelPipeline(options));
         }
 
-        BindVertices<GaussianBlurVertexShader>(cmd, host_buffer,
+        BindVertices<GaussianBlurVertexShader>(pass, host_buffer,
                                                {
                                                    {blur_uvs[0], blur_uvs[0]},
                                                    {blur_uvs[1], blur_uvs[1]},
@@ -165,16 +167,14 @@ fml::StatusOr<RenderTarget> MakeBlurSubpass(
         linear_sampler_descriptor.mag_filter = MinMagFilter::kLinear;
         linear_sampler_descriptor.min_filter = MinMagFilter::kLinear;
         GaussianBlurFragmentShader::BindTextureSampler(
-            cmd, input_texture,
+            pass, input_texture,
             renderer.GetContext()->GetSamplerLibrary()->GetSampler(
                 linear_sampler_descriptor));
         GaussianBlurVertexShader::BindFrameInfo(
-            cmd, host_buffer.EmplaceUniform(frame_info));
+            pass, host_buffer.EmplaceUniform(frame_info));
         GaussianBlurFragmentShader::BindKernelSamples(
-            cmd, host_buffer.EmplaceUniform(GenerateBlurInfo(blur_info)));
-        pass.AddCommand(std::move(cmd));
-
-        return true;
+            pass, host_buffer.EmplaceUniform(GenerateBlurInfo(blur_info)));
+        return pass.Draw().ok();
       };
   if (destination_target.has_value()) {
     return renderer.MakeSubpass("Gaussian Blur Filter",
@@ -193,7 +193,13 @@ Rect MakeReferenceUVs(const Rect& reference, const Rect& rect) {
   return result.Scale(1.0f / Vector2(reference.GetSize()));
 }
 
+int ScaleBlurRadius(Scalar radius, Scalar scalar) {
+  return static_cast<int>(std::round(radius * scalar));
+}
 }  // namespace
+
+std::string_view GaussianBlurFilterContents::kNoMipsError =
+    "Applying gaussian blur without mipmap.";
 
 GaussianBlurFilterContents::GaussianBlurFilterContents(
     Scalar sigma_x,
@@ -208,7 +214,21 @@ Scalar GaussianBlurFilterContents::CalculateScale(Scalar sigma) {
   if (sigma <= 4) {
     return 1.0;
   }
-  return 4.0 / sigma;
+  Scalar raw_result = 4.0 / sigma;
+  // Round to the nearest 1/(2^n) to get the best quality down scaling.
+  Scalar exponent = round(log2f(raw_result));
+  // Don't scale down below 1/16th to preserve signal.
+  exponent = std::max(-4.0f, exponent);
+  Scalar rounded = powf(2.0f, exponent);
+  Scalar result = rounded;
+  // Only drop below 1/8 if 1/8 would overflow our kernel.
+  if (rounded < 0.125f) {
+    Scalar rounded_plus = powf(2.0f, exponent + 1);
+    Scalar blur_radius = CalculateBlurRadius(sigma);
+    int kernel_size_plus = (ScaleBlurRadius(blur_radius, rounded_plus) * 2) + 1;
+    result = kernel_size_plus < kMaxKernelSize ? rounded_plus : rounded;
+  }
+  return result;
 };
 
 std::optional<Rect> GaussianBlurFilterContents::GetFilterSourceCoverage(
@@ -272,9 +292,18 @@ std::optional<Entity> GaussianBlurFilterContents::RenderFilter(
     expanded_coverage_hint = coverage_hint->Expand(local_padding);
   }
 
+  int32_t mip_count = kBlurFilterRequiredMipCount;
+  if (renderer.GetContext()->GetBackendType() ==
+      Context::BackendType::kOpenGLES) {
+    // TODO(https://github.com/flutter/flutter/issues/141732): Implement mip map
+    // generation on opengles.
+    mip_count = 1;
+  }
+
   std::optional<Snapshot> input_snapshot =
       inputs[0]->GetSnapshot("GaussianBlur", renderer, entity,
-                             /*coverage_limit=*/expanded_coverage_hint);
+                             /*coverage_limit=*/expanded_coverage_hint,
+                             /*mip_count=*/mip_count);
   if (!input_snapshot.has_value()) {
     return std::nullopt;
   }
@@ -283,6 +312,12 @@ std::optional<Entity> GaussianBlurFilterContents::RenderFilter(
     return Entity::FromSnapshot(input_snapshot.value(), entity.GetBlendMode(),
                                 entity.GetClipDepth());  // No blur to render.
   }
+
+  // In order to avoid shimmering in downsampling step, we should have mips.
+  if (input_snapshot->texture->GetMipCount() <= 1) {
+    FML_DLOG(ERROR) << kNoMipsError;
+  }
+  FML_DCHECK(!input_snapshot->texture->NeedsMipmapGeneration());
 
   Scalar desired_scalar =
       std::min(CalculateScale(scaled_sigma.x), CalculateScale(scaled_sigma.y));
@@ -350,8 +385,7 @@ std::optional<Entity> GaussianBlurFilterContents::RenderFilter(
       BlurParameters{
           .blur_uv_offset = Point(0.0, pass1_pixel_size.y),
           .blur_sigma = scaled_sigma.y * effective_scalar.y,
-          .blur_radius =
-              static_cast<int>(std::round(blur_radius.y * effective_scalar.y)),
+          .blur_radius = ScaleBlurRadius(blur_radius.y, effective_scalar.y),
           .step_size = 1,
       },
       /*destination_target=*/std::nullopt, blur_uvs);
@@ -372,8 +406,7 @@ std::optional<Entity> GaussianBlurFilterContents::RenderFilter(
       BlurParameters{
           .blur_uv_offset = Point(pass1_pixel_size.x, 0.0),
           .blur_sigma = scaled_sigma.x * effective_scalar.x,
-          .blur_radius =
-              static_cast<int>(std::round(blur_radius.x * effective_scalar.x)),
+          .blur_radius = ScaleBlurRadius(blur_radius.x, effective_scalar.x),
           .step_size = 1,
       },
       pass3_destination, blur_uvs);
@@ -437,8 +470,7 @@ KernelPipeline::FragmentShader::KernelSamples GenerateBlurInfo(
   KernelPipeline::FragmentShader::KernelSamples result;
   result.sample_count =
       ((2 * parameters.blur_radius) / parameters.step_size) + 1;
-  // 32 comes from kernel.glsl.
-  FML_CHECK(result.sample_count < 32);
+  FML_CHECK(result.sample_count < kMaxKernelSize);
 
   // Chop off the last samples if the radius >= 3 where they account for < 1.56%
   // of the result.

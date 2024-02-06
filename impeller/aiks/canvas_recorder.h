@@ -45,7 +45,6 @@ enum CanvasRecorderOp : uint16_t {
   kClipRect,
   kClipOval,
   kClipRRect,
-  kDrawPicture,
   kDrawTextFrame,
   kDrawVertices,
   kDrawAtlas,
@@ -237,13 +236,16 @@ class CanvasRecorder {
                                offset, paint, sampler);
   }
 
-  void DrawImageRect(const std::shared_ptr<Image>& image,
-                     Rect source,
-                     Rect dest,
-                     const Paint& paint,
-                     SamplerDescriptor sampler = {}) {
+  void DrawImageRect(
+      const std::shared_ptr<Image>& image,
+      Rect source,
+      Rect dest,
+      const Paint& paint,
+      SamplerDescriptor sampler = {},
+      SourceRectConstraint src_rect_constraint = SourceRectConstraint::kFast) {
     return ExecuteAndSerialize(FLT_CANVAS_RECORDER_OP_ARG(DrawImageRect), image,
-                               source, dest, paint, sampler);
+                               source, dest, paint, sampler,
+                               src_rect_constraint);
   }
 
   void ClipPath(
@@ -275,11 +277,6 @@ class CanvasRecorder {
       Entity::ClipOperation clip_op = Entity::ClipOperation::kIntersect) {
     return ExecuteAndSerialize(FLT_CANVAS_RECORDER_OP_ARG(ClipRRect), rect,
                                corner_radii, clip_op);
-  }
-
-  void DrawPicture(const Picture& picture) {
-    return ExecuteAndSerialize(FLT_CANVAS_RECORDER_OP_ARG(DrawPicture),
-                               picture);
   }
 
   void DrawTextFrame(const std::shared_ptr<TextFrame>& text_frame,

@@ -22,6 +22,13 @@
 #include "impeller/fixtures/instanced_draw.vert.h"
 #include "impeller/fixtures/mipmaps.frag.h"
 #include "impeller/fixtures/mipmaps.vert.h"
+#include "impeller/fixtures/sepia.frag.h"
+#include "impeller/fixtures/sepia.vert.h"
+#include "impeller/fixtures/swizzle.frag.h"
+#include "impeller/fixtures/test_texture.frag.h"
+#include "impeller/fixtures/test_texture.vert.h"
+#include "impeller/fixtures/texture.frag.h"
+#include "impeller/fixtures/texture.vert.h"
 #include "impeller/geometry/path_builder.h"
 #include "impeller/playground/playground_test.h"
 #include "impeller/renderer/command.h"
@@ -69,7 +76,8 @@ TEST_P(RendererTest, CanCreateBoxPrimitive) {
   auto bridge = CreateTextureForFixture("bay_bridge.jpg");
   auto boston = CreateTextureForFixture("boston.jpg");
   ASSERT_TRUE(bridge && boston);
-  auto sampler = context->GetSamplerLibrary()->GetSampler({});
+  const std::unique_ptr<const Sampler>& sampler =
+      context->GetSamplerLibrary()->GetSampler({});
   ASSERT_TRUE(sampler);
 
   auto host_buffer = HostBuffer::Create(context->GetResourceAllocator());
@@ -84,11 +92,9 @@ TEST_P(RendererTest, CanCreateBoxPrimitive) {
 
     assert(pipeline && pipeline->IsValid());
 
-    Command cmd;
-    DEBUG_COMMAND_INFO(cmd, "Box");
-    cmd.pipeline = pipeline;
-
-    cmd.BindVertices(
+    pass.SetCommandLabel("Box");
+    pass.SetPipeline(pipeline);
+    pass.SetVertexBuffer(
         vertex_builder.CreateVertexBuffer(*context->GetResourceAllocator()));
 
     VS::UniformBuffer uniforms;
@@ -96,7 +102,7 @@ TEST_P(RendererTest, CanCreateBoxPrimitive) {
               Matrix::MakeOrthographic(pass.GetRenderTargetSize()));
     uniforms.mvp =
         pass.GetOrthographicTransform() * Matrix::MakeScale(GetContentScale());
-    VS::BindUniformBuffer(cmd, host_buffer->EmplaceUniform(uniforms));
+    VS::BindUniformBuffer(pass, host_buffer->EmplaceUniform(uniforms));
 
     FS::FrameInfo frame_info;
     frame_info.current_time = GetSecondsElapsed();
@@ -104,15 +110,12 @@ TEST_P(RendererTest, CanCreateBoxPrimitive) {
     frame_info.window_size.x = GetWindowSize().width;
     frame_info.window_size.y = GetWindowSize().height;
 
-    FS::BindFrameInfo(cmd, host_buffer->EmplaceUniform(frame_info));
-    FS::BindContents1(cmd, boston, sampler);
-    FS::BindContents2(cmd, bridge, sampler);
+    FS::BindFrameInfo(pass, host_buffer->EmplaceUniform(frame_info));
+    FS::BindContents1(pass, boston, sampler);
+    FS::BindContents2(pass, bridge, sampler);
 
     host_buffer->Reset();
-    if (!pass.AddCommand(std::move(cmd))) {
-      return false;
-    }
-    return true;
+    return pass.Draw().ok();
   };
   OpenPlaygroundHere(callback);
 }
@@ -169,7 +172,8 @@ TEST_P(RendererTest, CanRenderPerspectiveCube) {
     vertex_buffer.index_type = IndexType::k16bit;
   }
 
-  auto sampler = context->GetSamplerLibrary()->GetSampler({});
+  const std::unique_ptr<const Sampler>& sampler =
+      context->GetSamplerLibrary()->GetSampler({});
   ASSERT_TRUE(sampler);
 
   Vector3 euler_angles;
@@ -183,11 +187,9 @@ TEST_P(RendererTest, CanRenderPerspectiveCube) {
     ImGui::SliderFloat("Camera distance", &distance, 0, 30);
     ImGui::End();
 
-    Command cmd;
-    DEBUG_COMMAND_INFO(cmd, "Perspective Cube");
-    cmd.pipeline = pipeline;
-
-    cmd.BindVertices(vertex_buffer);
+    pass.SetCommandLabel("Perspective Cube");
+    pass.SetPipeline(pipeline);
+    pass.SetVertexBuffer(vertex_buffer);
 
     VS::UniformBuffer uniforms;
     Scalar time = GetSecondsElapsed();
@@ -199,13 +201,10 @@ TEST_P(RendererTest, CanRenderPerspectiveCube) {
         Matrix::MakeRotationX(Radians(euler_angles.x)) *
         Matrix::MakeRotationY(Radians(euler_angles.y)) *
         Matrix::MakeRotationZ(Radians(euler_angles.z));
-    VS::BindUniformBuffer(cmd, host_buffer->EmplaceUniform(uniforms));
+    VS::BindUniformBuffer(pass, host_buffer->EmplaceUniform(uniforms));
 
     host_buffer->Reset();
-    if (!pass.AddCommand(std::move(cmd))) {
-      return false;
-    }
-    return true;
+    return pass.Draw().ok();
   };
   OpenPlaygroundHere(callback);
 }
@@ -242,37 +241,36 @@ TEST_P(RendererTest, CanRenderMultiplePrimitives) {
   auto bridge = CreateTextureForFixture("bay_bridge.jpg");
   auto boston = CreateTextureForFixture("boston.jpg");
   ASSERT_TRUE(bridge && boston);
-  auto sampler = context->GetSamplerLibrary()->GetSampler({});
+  const std::unique_ptr<const Sampler>& sampler =
+      context->GetSamplerLibrary()->GetSampler({});
   ASSERT_TRUE(sampler);
 
   auto host_buffer = HostBuffer::Create(context->GetResourceAllocator());
   SinglePassCallback callback = [&](RenderPass& pass) {
-    Command cmd;
-    DEBUG_COMMAND_INFO(cmd, "Box");
-    cmd.pipeline = box_pipeline;
-
-    cmd.BindVertices(vertex_buffer);
-
-    FS::FrameInfo frame_info;
-    frame_info.current_time = GetSecondsElapsed();
-    frame_info.cursor_position = GetCursorPosition();
-    frame_info.window_size.x = GetWindowSize().width;
-    frame_info.window_size.y = GetWindowSize().height;
-
-    FS::BindFrameInfo(cmd, host_buffer->EmplaceUniform(frame_info));
-    FS::BindContents1(cmd, boston, sampler);
-    FS::BindContents2(cmd, bridge, sampler);
-
     for (size_t i = 0; i < 1; i++) {
       for (size_t j = 0; j < 1; j++) {
+        pass.SetCommandLabel("Box");
+        pass.SetPipeline(box_pipeline);
+        pass.SetVertexBuffer(vertex_buffer);
+
+        FS::FrameInfo frame_info;
+        frame_info.current_time = GetSecondsElapsed();
+        frame_info.cursor_position = GetCursorPosition();
+        frame_info.window_size.x = GetWindowSize().width;
+        frame_info.window_size.y = GetWindowSize().height;
+
+        FS::BindFrameInfo(pass, host_buffer->EmplaceUniform(frame_info));
+        FS::BindContents1(pass, boston, sampler);
+        FS::BindContents2(pass, bridge, sampler);
+
         VS::UniformBuffer uniforms;
         EXPECT_EQ(pass.GetOrthographicTransform(),
                   Matrix::MakeOrthographic(pass.GetRenderTargetSize()));
         uniforms.mvp = pass.GetOrthographicTransform() *
                        Matrix::MakeScale(GetContentScale()) *
                        Matrix::MakeTranslation({i * 50.0f, j * 50.0f, 0.0f});
-        VS::BindUniformBuffer(cmd, host_buffer->EmplaceUniform(uniforms));
-        if (!pass.AddCommand(std::move(cmd))) {
+        VS::BindUniformBuffer(pass, host_buffer->EmplaceUniform(uniforms));
+        if (!pass.Draw().ok()) {
           return false;
         }
       }
@@ -317,8 +315,10 @@ TEST_P(RendererTest, CanRenderToTexture) {
   auto bridge = CreateTextureForFixture("bay_bridge.jpg");
   auto boston = CreateTextureForFixture("boston.jpg");
   ASSERT_TRUE(bridge && boston);
-  auto sampler = context->GetSamplerLibrary()->GetSampler({});
+  const std::unique_ptr<const Sampler>& sampler =
+      context->GetSamplerLibrary()->GetSampler({});
   ASSERT_TRUE(sampler);
+
   std::shared_ptr<RenderPass> r2t_pass;
   auto cmd_buffer = context->CreateCommandBuffer();
   ASSERT_TRUE(cmd_buffer);
@@ -363,11 +363,9 @@ TEST_P(RendererTest, CanRenderToTexture) {
     ASSERT_TRUE(r2t_pass && r2t_pass->IsValid());
   }
 
-  Command cmd;
-  DEBUG_COMMAND_INFO(cmd, "Box");
-  cmd.pipeline = box_pipeline;
-
-  cmd.BindVertices(vertex_buffer);
+  r2t_pass->SetCommandLabel("Box");
+  r2t_pass->SetPipeline(box_pipeline);
+  r2t_pass->SetVertexBuffer(vertex_buffer);
 
   FS::FrameInfo frame_info;
   frame_info.current_time = GetSecondsElapsed();
@@ -375,15 +373,15 @@ TEST_P(RendererTest, CanRenderToTexture) {
   frame_info.window_size.x = GetWindowSize().width;
   frame_info.window_size.y = GetWindowSize().height;
 
-  FS::BindFrameInfo(cmd, host_buffer->EmplaceUniform(frame_info));
-  FS::BindContents1(cmd, boston, sampler);
-  FS::BindContents2(cmd, bridge, sampler);
+  FS::BindFrameInfo(*r2t_pass, host_buffer->EmplaceUniform(frame_info));
+  FS::BindContents1(*r2t_pass, boston, sampler);
+  FS::BindContents2(*r2t_pass, bridge, sampler);
 
   VS::UniformBuffer uniforms;
   uniforms.mvp = Matrix::MakeOrthographic(ISize{1024, 768}) *
                  Matrix::MakeTranslation({50.0f, 50.0f, 0.0f});
-  VS::BindUniformBuffer(cmd, host_buffer->EmplaceUniform(uniforms));
-  ASSERT_TRUE(r2t_pass->AddCommand(std::move(cmd)));
+  VS::BindUniformBuffer(*r2t_pass, host_buffer->EmplaceUniform(uniforms));
+  ASSERT_TRUE(r2t_pass->Draw().ok());
   ASSERT_TRUE(r2t_pass->EncodeCommands());
 }
 
@@ -427,10 +425,6 @@ TEST_P(RendererTest, CanRenderInstanced) {
           .Get();
   ASSERT_TRUE(pipeline && pipeline->IsValid());
 
-  Command cmd;
-  cmd.pipeline = pipeline;
-  DEBUG_COMMAND_INFO(cmd, "InstancedDraw");
-
   static constexpr size_t kInstancesCount = 5u;
   VS::InstanceInfo<kInstancesCount> instances;
   for (size_t i = 0; i < kInstancesCount; i++) {
@@ -439,17 +433,20 @@ TEST_P(RendererTest, CanRenderInstanced) {
 
   auto host_buffer = HostBuffer::Create(GetContext()->GetResourceAllocator());
   ASSERT_TRUE(OpenPlaygroundHere([&](RenderPass& pass) -> bool {
+    pass.SetPipeline(pipeline);
+    pass.SetCommandLabel("InstancedDraw");
+
     VS::FrameInfo frame_info;
     EXPECT_EQ(pass.GetOrthographicTransform(),
               Matrix::MakeOrthographic(pass.GetRenderTargetSize()));
     frame_info.mvp =
         pass.GetOrthographicTransform() * Matrix::MakeScale(GetContentScale());
-    VS::BindFrameInfo(cmd, host_buffer->EmplaceUniform(frame_info));
-    VS::BindInstanceInfo(cmd, host_buffer->EmplaceStorageBuffer(instances));
-    cmd.BindVertices(builder.CreateVertexBuffer(*host_buffer));
+    VS::BindFrameInfo(pass, host_buffer->EmplaceUniform(frame_info));
+    VS::BindInstanceInfo(pass, host_buffer->EmplaceStorageBuffer(instances));
+    pass.SetVertexBuffer(builder.CreateVertexBuffer(*host_buffer));
 
-    cmd.instance_count = kInstancesCount;
-    pass.AddCommand(std::move(cmd));
+    pass.SetInstanceCount(kInstancesCount);
+    pass.Draw();
 
     host_buffer->Reset();
     return true;
@@ -487,7 +484,8 @@ TEST_P(RendererTest, CanBlitTextureToTexture) {
   auto bridge = CreateTextureForFixture("bay_bridge.jpg");
   auto boston = CreateTextureForFixture("boston.jpg");
   ASSERT_TRUE(bridge && boston);
-  auto sampler = context->GetSamplerLibrary()->GetSampler({});
+  const std::unique_ptr<const Sampler>& sampler =
+      context->GetSamplerLibrary()->GetSampler({});
   ASSERT_TRUE(sampler);
 
   // Vertex buffer.
@@ -540,32 +538,30 @@ TEST_P(RendererTest, CanBlitTextureToTexture) {
       }
       pass->SetLabel("Playground Render Pass");
       {
-        Command cmd;
-        DEBUG_COMMAND_INFO(cmd, "Image");
-        cmd.pipeline = mipmaps_pipeline;
-
-        cmd.BindVertices(vertex_buffer);
+        pass->SetCommandLabel("Image");
+        pass->SetPipeline(mipmaps_pipeline);
+        pass->SetVertexBuffer(vertex_buffer);
 
         VS::FrameInfo frame_info;
         EXPECT_EQ(pass->GetOrthographicTransform(),
                   Matrix::MakeOrthographic(pass->GetRenderTargetSize()));
         frame_info.mvp = pass->GetOrthographicTransform() *
                          Matrix::MakeScale(GetContentScale());
-        VS::BindFrameInfo(cmd, host_buffer->EmplaceUniform(frame_info));
+        VS::BindFrameInfo(*pass, host_buffer->EmplaceUniform(frame_info));
 
         FS::FragInfo frag_info;
         frag_info.lod = 0;
-        FS::BindFragInfo(cmd, host_buffer->EmplaceUniform(frag_info));
+        FS::BindFragInfo(*pass, host_buffer->EmplaceUniform(frag_info));
 
-        auto sampler = context->GetSamplerLibrary()->GetSampler({});
-        FS::BindTex(cmd, texture, sampler);
+        auto& sampler = context->GetSamplerLibrary()->GetSampler({});
+        FS::BindTex(*pass, texture, sampler);
 
-        pass->AddCommand(std::move(cmd));
+        pass->Draw();
       }
       pass->EncodeCommands();
     }
 
-    if (!buffer->SubmitCommands()) {
+    if (!context->GetCommandQueue()->Submit({buffer}).ok()) {
       return false;
     }
     host_buffer->Reset();
@@ -594,7 +590,8 @@ TEST_P(RendererTest, CanBlitTextureToBuffer) {
   auto bridge = CreateTextureForFixture("bay_bridge.jpg");
   auto boston = CreateTextureForFixture("boston.jpg");
   ASSERT_TRUE(bridge && boston);
-  auto sampler = context->GetSamplerLibrary()->GetSampler({});
+  const std::unique_ptr<const Sampler>& sampler =
+      context->GetSamplerLibrary()->GetSampler({});
   ASSERT_TRUE(sampler);
 
   TextureDescriptor texture_desc;
@@ -649,10 +646,9 @@ TEST_P(RendererTest, CanBlitTextureToBuffer) {
 
       // Blit `bridge` to the top left corner of the texture.
       pass->AddCopy(bridge, device_buffer);
-
       pass->EncodeCommands(context->GetResourceAllocator());
 
-      if (!buffer->SubmitCommands()) {
+      if (!context->GetCommandQueue()->Submit({buffer}).ok()) {
         return false;
       }
     }
@@ -670,38 +666,37 @@ TEST_P(RendererTest, CanBlitTextureToBuffer) {
       }
       pass->SetLabel("Playground Render Pass");
       {
-        Command cmd;
-        DEBUG_COMMAND_INFO(cmd, "Image");
-        cmd.pipeline = mipmaps_pipeline;
-
-        cmd.BindVertices(vertex_buffer);
+        pass->SetCommandLabel("Image");
+        pass->SetPipeline(mipmaps_pipeline);
+        pass->SetVertexBuffer(vertex_buffer);
 
         VS::FrameInfo frame_info;
         EXPECT_EQ(pass->GetOrthographicTransform(),
                   Matrix::MakeOrthographic(pass->GetRenderTargetSize()));
         frame_info.mvp = pass->GetOrthographicTransform() *
                          Matrix::MakeScale(GetContentScale());
-        VS::BindFrameInfo(cmd, host_buffer->EmplaceUniform(frame_info));
+        VS::BindFrameInfo(*pass, host_buffer->EmplaceUniform(frame_info));
 
         FS::FragInfo frag_info;
         frag_info.lod = 0;
-        FS::BindFragInfo(cmd, host_buffer->EmplaceUniform(frag_info));
+        FS::BindFragInfo(*pass, host_buffer->EmplaceUniform(frag_info));
 
-        auto sampler = context->GetSamplerLibrary()->GetSampler({});
-        auto buffer_view = device_buffer->AsBufferView();
+        const std::unique_ptr<const Sampler>& sampler =
+            context->GetSamplerLibrary()->GetSampler({});
+        auto buffer_view = DeviceBuffer::AsBufferView(device_buffer);
         auto texture =
             context->GetResourceAllocator()->CreateTexture(texture_desc);
-        if (!texture->SetContents(buffer_view.contents,
+        if (!texture->SetContents(device_buffer->OnGetContents(),
                                   buffer_view.range.length)) {
           VALIDATION_LOG << "Could not upload texture to device memory";
           return false;
         }
-        FS::BindTex(cmd, texture, sampler);
+        FS::BindTex(*pass, texture, sampler);
 
-        pass->AddCommand(std::move(cmd));
+        pass->Draw().ok();
       }
       pass->EncodeCommands();
-      if (!buffer->SubmitCommands()) {
+      if (!context->GetCommandQueue()->Submit({buffer}).ok()) {
         return false;
       }
     }
@@ -796,35 +791,34 @@ TEST_P(RendererTest, CanGenerateMipmaps) {
       }
       pass->SetLabel("Playground Render Pass");
       {
-        Command cmd;
-        DEBUG_COMMAND_INFO(cmd, "Image LOD");
-        cmd.pipeline = mipmaps_pipeline;
-
-        cmd.BindVertices(vertex_buffer);
+        pass->SetCommandLabel("Image LOD");
+        pass->SetPipeline(mipmaps_pipeline);
+        pass->SetVertexBuffer(vertex_buffer);
 
         VS::FrameInfo frame_info;
         EXPECT_EQ(pass->GetOrthographicTransform(),
                   Matrix::MakeOrthographic(pass->GetRenderTargetSize()));
         frame_info.mvp = pass->GetOrthographicTransform() *
                          Matrix::MakeScale(GetContentScale());
-        VS::BindFrameInfo(cmd, host_buffer->EmplaceUniform(frame_info));
+        VS::BindFrameInfo(*pass, host_buffer->EmplaceUniform(frame_info));
 
         FS::FragInfo frag_info;
         frag_info.lod = lod;
-        FS::BindFragInfo(cmd, host_buffer->EmplaceUniform(frag_info));
+        FS::BindFragInfo(*pass, host_buffer->EmplaceUniform(frag_info));
 
         SamplerDescriptor sampler_desc;
         sampler_desc.mip_filter = mip_filters[selected_mip_filter];
         sampler_desc.min_filter = min_filters[selected_min_filter];
-        auto sampler = context->GetSamplerLibrary()->GetSampler(sampler_desc);
-        FS::BindTex(cmd, boston, sampler);
+        const std::unique_ptr<const Sampler>& sampler =
+            context->GetSamplerLibrary()->GetSampler(sampler_desc);
+        FS::BindTex(*pass, boston, sampler);
 
-        pass->AddCommand(std::move(cmd));
+        pass->Draw();
       }
       pass->EncodeCommands();
     }
 
-    if (!buffer->SubmitCommands()) {
+    if (!context->GetCommandQueue()->Submit({buffer}).ok()) {
       return false;
     }
     host_buffer->Reset();
@@ -851,22 +845,22 @@ TEST_P(RendererTest, TheImpeller) {
   SamplerDescriptor noise_sampler_desc;
   noise_sampler_desc.width_address_mode = SamplerAddressMode::kRepeat;
   noise_sampler_desc.height_address_mode = SamplerAddressMode::kRepeat;
-  auto noise_sampler =
+  const std::unique_ptr<const Sampler>& noise_sampler =
       context->GetSamplerLibrary()->GetSampler(noise_sampler_desc);
 
   auto cube_map = CreateTextureCubeForFixture(
       {"table_mountain_px.png", "table_mountain_nx.png",
        "table_mountain_py.png", "table_mountain_ny.png",
        "table_mountain_pz.png", "table_mountain_nz.png"});
-  auto cube_map_sampler = context->GetSamplerLibrary()->GetSampler({});
+  const std::unique_ptr<const Sampler>& cube_map_sampler =
+      context->GetSamplerLibrary()->GetSampler({});
   auto host_buffer = HostBuffer::Create(context->GetResourceAllocator());
 
   SinglePassCallback callback = [&](RenderPass& pass) {
     auto size = pass.GetRenderTargetSize();
 
-    Command cmd;
-    cmd.pipeline = pipeline;
-    DEBUG_COMMAND_INFO(cmd, "Impeller SDF scene");
+    pass.SetPipeline(pipeline);
+    pass.SetCommandLabel("Impeller SDF scene");
     VertexBufferBuilder<VS::PerVertexData> builder;
     builder.AddVertices({{Point()},
                          {Point(0, size.height)},
@@ -874,21 +868,21 @@ TEST_P(RendererTest, TheImpeller) {
                          {Point(size.width, 0)},
                          {Point(0, size.height)},
                          {Point(size.width, size.height)}});
-    cmd.BindVertices(builder.CreateVertexBuffer(*host_buffer));
+    pass.SetVertexBuffer(builder.CreateVertexBuffer(*host_buffer));
 
     VS::FrameInfo frame_info;
     EXPECT_EQ(pass.GetOrthographicTransform(), Matrix::MakeOrthographic(size));
     frame_info.mvp = pass.GetOrthographicTransform();
-    VS::BindFrameInfo(cmd, host_buffer->EmplaceUniform(frame_info));
+    VS::BindFrameInfo(pass, host_buffer->EmplaceUniform(frame_info));
 
     FS::FragInfo fs_uniform;
     fs_uniform.texture_size = Point(size);
     fs_uniform.time = GetSecondsElapsed();
-    FS::BindFragInfo(cmd, host_buffer->EmplaceUniform(fs_uniform));
-    FS::BindBlueNoise(cmd, blue_noise, noise_sampler);
-    FS::BindCubeMap(cmd, cube_map, cube_map_sampler);
+    FS::BindFragInfo(pass, host_buffer->EmplaceUniform(fs_uniform));
+    FS::BindBlueNoise(pass, blue_noise, noise_sampler);
+    FS::BindCubeMap(pass, cube_map, cube_map_sampler);
 
-    pass.AddCommand(std::move(cmd));
+    pass.Draw().ok();
     host_buffer->Reset();
     return true;
   };
@@ -913,9 +907,8 @@ TEST_P(RendererTest, ArrayUniforms) {
   SinglePassCallback callback = [&](RenderPass& pass) {
     auto size = pass.GetRenderTargetSize();
 
-    Command cmd;
-    cmd.pipeline = pipeline;
-    DEBUG_COMMAND_INFO(cmd, "Google Dots");
+    pass.SetPipeline(pipeline);
+    pass.SetCommandLabel("Google Dots");
     VertexBufferBuilder<VS::PerVertexData> builder;
     builder.AddVertices({{Point()},
                          {Point(0, size.height)},
@@ -923,13 +916,13 @@ TEST_P(RendererTest, ArrayUniforms) {
                          {Point(size.width, 0)},
                          {Point(0, size.height)},
                          {Point(size.width, size.height)}});
-    cmd.BindVertices(builder.CreateVertexBuffer(*host_buffer));
+    pass.SetVertexBuffer(builder.CreateVertexBuffer(*host_buffer));
 
     VS::FrameInfo frame_info;
     EXPECT_EQ(pass.GetOrthographicTransform(), Matrix::MakeOrthographic(size));
     frame_info.mvp =
         pass.GetOrthographicTransform() * Matrix::MakeScale(GetContentScale());
-    VS::BindFrameInfo(cmd, host_buffer->EmplaceUniform(frame_info));
+    VS::BindFrameInfo(pass, host_buffer->EmplaceUniform(frame_info));
 
     auto time = GetSecondsElapsed();
     auto y_pos = [&time](float x) {
@@ -944,9 +937,9 @@ TEST_P(RendererTest, ArrayUniforms) {
                    Color::MakeRGBA8(244, 180, 0, 255),
                    Color::MakeRGBA8(15, 157, 88, 255)},
     };
-    FS::BindFragInfo(cmd, host_buffer->EmplaceUniform(fs_uniform));
+    FS::BindFragInfo(pass, host_buffer->EmplaceUniform(fs_uniform));
 
-    pass.AddCommand(std::move(cmd));
+    pass.Draw();
     host_buffer->Reset();
     return true;
   };
@@ -971,9 +964,9 @@ TEST_P(RendererTest, InactiveUniforms) {
   SinglePassCallback callback = [&](RenderPass& pass) {
     auto size = pass.GetRenderTargetSize();
 
-    Command cmd;
-    cmd.pipeline = pipeline;
-    DEBUG_COMMAND_INFO(cmd, "Inactive Uniform");
+    pass.SetPipeline(pipeline);
+    pass.SetCommandLabel("Inactive Uniform");
+
     VertexBufferBuilder<VS::PerVertexData> builder;
     builder.AddVertices({{Point()},
                          {Point(0, size.height)},
@@ -981,19 +974,19 @@ TEST_P(RendererTest, InactiveUniforms) {
                          {Point(size.width, 0)},
                          {Point(0, size.height)},
                          {Point(size.width, size.height)}});
-    cmd.BindVertices(builder.CreateVertexBuffer(*host_buffer));
+    pass.SetVertexBuffer(builder.CreateVertexBuffer(*host_buffer));
 
     VS::FrameInfo frame_info;
     EXPECT_EQ(pass.GetOrthographicTransform(), Matrix::MakeOrthographic(size));
     frame_info.mvp =
         pass.GetOrthographicTransform() * Matrix::MakeScale(GetContentScale());
-    VS::BindFrameInfo(cmd, host_buffer->EmplaceUniform(frame_info));
+    VS::BindFrameInfo(pass, host_buffer->EmplaceUniform(frame_info));
 
     FS::FragInfo fs_uniform = {.unused_color = Color::Red(),
                                .color = Color::Green()};
-    FS::BindFragInfo(cmd, host_buffer->EmplaceUniform(fs_uniform));
+    FS::BindFragInfo(pass, host_buffer->EmplaceUniform(fs_uniform));
 
-    pass.AddCommand(std::move(cmd));
+    pass.Draw().ok();
     host_buffer->Reset();
     return true;
   };
@@ -1155,7 +1148,8 @@ TEST_P(RendererTest, StencilMask) {
   auto bridge = CreateTextureForFixture("bay_bridge.jpg");
   auto boston = CreateTextureForFixture("boston.jpg");
   ASSERT_TRUE(bridge && boston);
-  auto sampler = context->GetSamplerLibrary()->GetSampler({});
+  const std::unique_ptr<const Sampler>& sampler =
+      context->GetSamplerLibrary()->GetSampler({});
   ASSERT_TRUE(sampler);
 
   static bool mirror = false;
@@ -1184,9 +1178,9 @@ TEST_P(RendererTest, StencilMask) {
       stencil_config.storage_mode = StorageMode::kHostVisible;
       auto render_target_allocator =
           RenderTargetAllocator(context->GetResourceAllocator());
-      render_target.SetupStencilAttachment(*context, render_target_allocator,
-                                           render_target.GetRenderTargetSize(),
-                                           true, "stencil", stencil_config);
+      render_target.SetupDepthStencilAttachments(
+          *context, render_target_allocator,
+          render_target.GetRenderTargetSize(), true, "stencil", stencil_config);
       // Fill the stencil buffer with an checkerboard pattern.
       const auto target_width = render_target.GetRenderTargetSize().width;
       const auto target_height = render_target.GetRenderTargetSize().height;
@@ -1239,12 +1233,10 @@ TEST_P(RendererTest, StencilMask) {
 
       assert(pipeline && pipeline->IsValid());
 
-      Command cmd;
-      DEBUG_COMMAND_INFO(cmd, "Box");
-      cmd.pipeline = pipeline;
-      cmd.stencil_reference = stencil_reference_read;
-
-      cmd.BindVertices(vertex_buffer);
+      pass->SetCommandLabel("Box");
+      pass->SetPipeline(pipeline);
+      pass->SetStencilReference(stencil_reference_read);
+      pass->SetVertexBuffer(vertex_buffer);
 
       VS::UniformBuffer uniforms;
       EXPECT_EQ(pass->GetOrthographicTransform(),
@@ -1254,7 +1246,7 @@ TEST_P(RendererTest, StencilMask) {
       if (mirror) {
         uniforms.mvp = Matrix::MakeScale(Vector2(-1, 1)) * uniforms.mvp;
       }
-      VS::BindUniformBuffer(cmd, host_buffer->EmplaceUniform(uniforms));
+      VS::BindUniformBuffer(*pass, host_buffer->EmplaceUniform(uniforms));
 
       FS::FrameInfo frame_info;
       frame_info.current_time = GetSecondsElapsed();
@@ -1262,16 +1254,16 @@ TEST_P(RendererTest, StencilMask) {
       frame_info.window_size.x = GetWindowSize().width;
       frame_info.window_size.y = GetWindowSize().height;
 
-      FS::BindFrameInfo(cmd, host_buffer->EmplaceUniform(frame_info));
-      FS::BindContents1(cmd, boston, sampler);
-      FS::BindContents2(cmd, bridge, sampler);
-      if (!pass->AddCommand(std::move(cmd))) {
+      FS::BindFrameInfo(*pass, host_buffer->EmplaceUniform(frame_info));
+      FS::BindContents1(*pass, boston, sampler);
+      FS::BindContents2(*pass, bridge, sampler);
+      if (!pass->Draw().ok()) {
         return false;
       }
       pass->EncodeCommands();
     }
 
-    if (!buffer->SubmitCommands()) {
+    if (!context->GetCommandQueue()->Submit({buffer}).ok()) {
       return false;
     }
     host_buffer->Reset();
@@ -1280,29 +1272,14 @@ TEST_P(RendererTest, StencilMask) {
   OpenPlaygroundHere(callback);
 }
 
-TEST_P(RendererTest, CanPreAllocateCommands) {
-  auto context = GetContext();
-  auto cmd_buffer = context->CreateCommandBuffer();
-  auto render_target_cache = std::make_shared<RenderTargetAllocator>(
-      GetContext()->GetResourceAllocator());
-
-  auto render_target =
-      RenderTarget::CreateOffscreen(*context, *render_target_cache, {100, 100});
-  auto render_pass = cmd_buffer->CreateRenderPass(render_target);
-
-  render_pass->ReserveCommands(100u);
-
-  EXPECT_EQ(render_pass->GetCommands().capacity(), 100u);
-}
-
 TEST_P(RendererTest, CanLookupRenderTargetProperties) {
   auto context = GetContext();
   auto cmd_buffer = context->CreateCommandBuffer();
   auto render_target_cache = std::make_shared<RenderTargetAllocator>(
       GetContext()->GetResourceAllocator());
 
-  auto render_target =
-      RenderTarget::CreateOffscreen(*context, *render_target_cache, {100, 100});
+  auto render_target = RenderTarget::CreateOffscreen(
+      *context, *render_target_cache, {100, 100}, /*mip_count=*/1);
   auto render_pass = cmd_buffer->CreateRenderPass(render_target);
 
   EXPECT_EQ(render_pass->GetSampleCount(), render_target.GetSampleCount());
@@ -1312,6 +1289,235 @@ TEST_P(RendererTest, CanLookupRenderTargetProperties) {
             render_target.GetStencilAttachment().has_value());
   EXPECT_EQ(render_pass->GetRenderTargetSize(),
             render_target.GetRenderTargetSize());
+  render_pass->EncodeCommands();
+}
+
+TEST_P(RendererTest,
+       RenderTargetCreateOffscreenMSAASetsDefaultDepthStencilFormat) {
+  auto context = GetContext();
+  auto render_target_cache = std::make_shared<RenderTargetAllocator>(
+      GetContext()->GetResourceAllocator());
+
+  RenderTarget render_target = RenderTarget::CreateOffscreenMSAA(
+      *context, *render_target_cache, {100, 100}, /*mip_count=*/1);
+  EXPECT_EQ(render_target.GetDepthAttachment()
+                ->texture->GetTextureDescriptor()
+                .format,
+            GetContext()->GetCapabilities()->GetDefaultDepthStencilFormat());
+}
+
+template <class VertexShader, class FragmentShader>
+std::shared_ptr<Pipeline<PipelineDescriptor>> CreateDefaultPipeline(
+    const std::shared_ptr<Context>& context) {
+  using TexturePipelineBuilder = PipelineBuilder<VertexShader, FragmentShader>;
+  auto pipeline_desc =
+      TexturePipelineBuilder::MakeDefaultPipelineDescriptor(*context);
+  if (!pipeline_desc.has_value()) {
+    return nullptr;
+  }
+  pipeline_desc->SetSampleCount(SampleCount::kCount4);
+  pipeline_desc->SetStencilAttachmentDescriptors(std::nullopt);
+  auto pipeline =
+      context->GetPipelineLibrary()->GetPipeline(pipeline_desc).Get();
+  if (!pipeline || !pipeline->IsValid()) {
+    return nullptr;
+  }
+  return pipeline;
+}
+
+TEST_P(RendererTest, CanSepiaToneWithSubpasses) {
+  // Define shader types
+  using TextureVS = TextureVertexShader;
+  using TextureFS = TextureFragmentShader;
+
+  using SepiaVS = SepiaVertexShader;
+  using SepiaFS = SepiaFragmentShader;
+
+  auto context = GetContext();
+  ASSERT_TRUE(context);
+
+  if (!context->GetCapabilities()->SupportsFramebufferFetch()) {
+    GTEST_SKIP_(
+        "This test uses framebuffer fetch and the backend doesn't support it.");
+    return;
+  }
+
+  // Create pipelines.
+  auto texture_pipeline = CreateDefaultPipeline<TextureVS, TextureFS>(context);
+  auto sepia_pipeline = CreateDefaultPipeline<SepiaVS, SepiaFS>(context);
+
+  ASSERT_TRUE(texture_pipeline);
+  ASSERT_TRUE(sepia_pipeline);
+
+  // Vertex buffer builders.
+  VertexBufferBuilder<TextureVS::PerVertexData> texture_vtx_builder;
+  texture_vtx_builder.AddVertices({
+      {{100, 100, 0.0}, {0.0, 0.0}},  // 1
+      {{800, 100, 0.0}, {1.0, 0.0}},  // 2
+      {{800, 800, 0.0}, {1.0, 1.0}},  // 3
+      {{100, 100, 0.0}, {0.0, 0.0}},  // 1
+      {{800, 800, 0.0}, {1.0, 1.0}},  // 3
+      {{100, 800, 0.0}, {0.0, 1.0}},  // 4
+  });
+
+  VertexBufferBuilder<SepiaVS::PerVertexData> sepia_vtx_builder;
+  sepia_vtx_builder.AddVertices({
+      {{100, 100, 0.0}},  // 1
+      {{800, 100, 0.0}},  // 2
+      {{800, 800, 0.0}},  // 3
+      {{100, 100, 0.0}},  // 1
+      {{800, 800, 0.0}},  // 3
+      {{100, 800, 0.0}},  // 4
+  });
+
+  auto boston = CreateTextureForFixture("boston.jpg");
+  ASSERT_TRUE(boston);
+
+  const auto& sampler = context->GetSamplerLibrary()->GetSampler({});
+  ASSERT_TRUE(sampler);
+
+  SinglePassCallback callback = [&](RenderPass& pass) {
+    auto buffer = HostBuffer::Create(context->GetResourceAllocator());
+
+    // Draw the texture.
+    {
+      pass.SetPipeline(texture_pipeline);
+      pass.SetVertexBuffer(texture_vtx_builder.CreateVertexBuffer(
+          *context->GetResourceAllocator()));
+      TextureVS::UniformBuffer uniforms;
+      uniforms.mvp = Matrix::MakeOrthographic(pass.GetRenderTargetSize()) *
+                     Matrix::MakeScale(GetContentScale());
+      TextureVS::BindUniformBuffer(pass, buffer->EmplaceUniform(uniforms));
+      TextureFS::BindTextureContents(pass, boston, sampler);
+      if (!pass.Draw().ok()) {
+        return false;
+      }
+    }
+
+    // Draw the sepia toner.
+    {
+      pass.SetPipeline(sepia_pipeline);
+      pass.SetVertexBuffer(sepia_vtx_builder.CreateVertexBuffer(
+          *context->GetResourceAllocator()));
+      SepiaVS::UniformBuffer uniforms;
+      uniforms.mvp = Matrix::MakeOrthographic(pass.GetRenderTargetSize()) *
+                     Matrix::MakeScale(GetContentScale());
+      SepiaVS::BindUniformBuffer(pass, buffer->EmplaceUniform(uniforms));
+      if (!pass.Draw().ok()) {
+        return false;
+      }
+    }
+
+    return true;
+  };
+  OpenPlaygroundHere(callback);
+}
+
+TEST_P(RendererTest, CanSepiaToneThenSwizzleWithSubpasses) {
+  // Define shader types
+  using TextureVS = TextureVertexShader;
+  using TextureFS = TextureFragmentShader;
+
+  using SwizzleVS = SepiaVertexShader;
+  using SwizzleFS = SwizzleFragmentShader;
+
+  using SepiaVS = SepiaVertexShader;
+  using SepiaFS = SepiaFragmentShader;
+
+  auto context = GetContext();
+  ASSERT_TRUE(context);
+
+  if (!context->GetCapabilities()->SupportsFramebufferFetch()) {
+    GTEST_SKIP_(
+        "This test uses framebuffer fetch and the backend doesn't support it.");
+    return;
+  }
+
+  // Create pipelines.
+  auto texture_pipeline = CreateDefaultPipeline<TextureVS, TextureFS>(context);
+  auto swizzle_pipeline = CreateDefaultPipeline<SwizzleVS, SwizzleFS>(context);
+  auto sepia_pipeline = CreateDefaultPipeline<SepiaVS, SepiaFS>(context);
+
+  ASSERT_TRUE(texture_pipeline);
+  ASSERT_TRUE(swizzle_pipeline);
+  ASSERT_TRUE(sepia_pipeline);
+
+  // Vertex buffer builders.
+  VertexBufferBuilder<TextureVS::PerVertexData> texture_vtx_builder;
+  texture_vtx_builder.AddVertices({
+      {{100, 100, 0.0}, {0.0, 0.0}},  // 1
+      {{800, 100, 0.0}, {1.0, 0.0}},  // 2
+      {{800, 800, 0.0}, {1.0, 1.0}},  // 3
+      {{100, 100, 0.0}, {0.0, 0.0}},  // 1
+      {{800, 800, 0.0}, {1.0, 1.0}},  // 3
+      {{100, 800, 0.0}, {0.0, 1.0}},  // 4
+  });
+
+  VertexBufferBuilder<SepiaVS::PerVertexData> sepia_vtx_builder;
+  sepia_vtx_builder.AddVertices({
+      {{100, 100, 0.0}},  // 1
+      {{800, 100, 0.0}},  // 2
+      {{800, 800, 0.0}},  // 3
+      {{100, 100, 0.0}},  // 1
+      {{800, 800, 0.0}},  // 3
+      {{100, 800, 0.0}},  // 4
+  });
+
+  auto boston = CreateTextureForFixture("boston.jpg");
+  ASSERT_TRUE(boston);
+
+  const auto& sampler = context->GetSamplerLibrary()->GetSampler({});
+  ASSERT_TRUE(sampler);
+
+  SinglePassCallback callback = [&](RenderPass& pass) {
+    auto buffer = HostBuffer::Create(context->GetResourceAllocator());
+
+    // Draw the texture.
+    {
+      pass.SetPipeline(texture_pipeline);
+      pass.SetVertexBuffer(texture_vtx_builder.CreateVertexBuffer(
+          *context->GetResourceAllocator()));
+      TextureVS::UniformBuffer uniforms;
+      uniforms.mvp = Matrix::MakeOrthographic(pass.GetRenderTargetSize()) *
+                     Matrix::MakeScale(GetContentScale());
+      TextureVS::BindUniformBuffer(pass, buffer->EmplaceUniform(uniforms));
+      TextureFS::BindTextureContents(pass, boston, sampler);
+      if (!pass.Draw().ok()) {
+        return false;
+      }
+    }
+
+    // Draw the sepia toner.
+    {
+      pass.SetPipeline(sepia_pipeline);
+      pass.SetVertexBuffer(sepia_vtx_builder.CreateVertexBuffer(
+          *context->GetResourceAllocator()));
+      SepiaVS::UniformBuffer uniforms;
+      uniforms.mvp = Matrix::MakeOrthographic(pass.GetRenderTargetSize()) *
+                     Matrix::MakeScale(GetContentScale());
+      SepiaVS::BindUniformBuffer(pass, buffer->EmplaceUniform(uniforms));
+      if (!pass.Draw().ok()) {
+        return false;
+      }
+    }
+
+    // Draw the swizzle.
+    {
+      pass.SetPipeline(swizzle_pipeline);
+      pass.SetVertexBuffer(sepia_vtx_builder.CreateVertexBuffer(
+          *context->GetResourceAllocator()));
+      SwizzleVS::UniformBuffer uniforms;
+      uniforms.mvp = Matrix::MakeOrthographic(pass.GetRenderTargetSize()) *
+                     Matrix::MakeScale(GetContentScale());
+      SwizzleVS::BindUniformBuffer(pass, buffer->EmplaceUniform(uniforms));
+      if (!pass.Draw().ok()) {
+        return false;
+      }
+    }
+
+    return true;
+  };
+  OpenPlaygroundHere(callback);
 }
 
 }  // namespace testing

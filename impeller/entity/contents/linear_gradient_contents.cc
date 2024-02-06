@@ -90,34 +90,34 @@ bool LinearGradientContents::RenderTexture(const ContentContext& renderer,
       GetGeometry()->GetPositionBuffer(renderer, entity, pass);
 
   VS::FrameInfo frame_info;
+  frame_info.depth = entity.GetShaderClipDepth();
   frame_info.mvp = geometry_result.transform;
   frame_info.matrix = GetInverseEffectTransform();
 
-  Command cmd;
-  DEBUG_COMMAND_INFO(cmd, "LinearGradientFill");
-  cmd.stencil_reference = entity.GetClipDepth();
-
   auto options = OptionsFromPassAndEntity(pass, entity);
   if (geometry_result.prevent_overdraw) {
-    options.stencil_compare = CompareFunction::kEqual;
-    options.stencil_operation = StencilOperation::kIncrementClamp;
+    options.stencil_mode =
+        ContentContextOptions::StencilMode::kLegacyClipIncrement;
   }
   options.primitive_type = geometry_result.type;
-  cmd.pipeline = renderer.GetLinearGradientFillPipeline(options);
 
-  cmd.BindVertices(std::move(geometry_result.vertex_buffer));
-  FS::BindFragInfo(cmd,
-                   renderer.GetTransientsBuffer().EmplaceUniform(frag_info));
   SamplerDescriptor sampler_desc;
   sampler_desc.min_filter = MinMagFilter::kLinear;
   sampler_desc.mag_filter = MinMagFilter::kLinear;
-  FS::BindTextureSampler(
-      cmd, std::move(gradient_texture),
-      renderer.GetContext()->GetSamplerLibrary()->GetSampler(sampler_desc));
-  VS::BindFrameInfo(cmd,
-                    renderer.GetTransientsBuffer().EmplaceUniform(frame_info));
 
-  if (!pass.AddCommand(std::move(cmd))) {
+  pass.SetCommandLabel("LinearGradientFill");
+  pass.SetStencilReference(entity.GetClipDepth());
+  pass.SetPipeline(renderer.GetLinearGradientFillPipeline(options));
+  pass.SetVertexBuffer(std::move(geometry_result.vertex_buffer));
+  FS::BindTextureSampler(
+      pass, std::move(gradient_texture),
+      renderer.GetContext()->GetSamplerLibrary()->GetSampler(sampler_desc));
+  VS::BindFrameInfo(pass,
+                    renderer.GetTransientsBuffer().EmplaceUniform(frame_info));
+  FS::BindFragInfo(pass,
+                   renderer.GetTransientsBuffer().EmplaceUniform(frag_info));
+
+  if (!pass.Draw().ok()) {
     return false;
   }
 
@@ -151,31 +151,30 @@ bool LinearGradientContents::RenderSSBO(const ContentContext& renderer,
                           DefaultUniformAlignment());
 
   VS::FrameInfo frame_info;
+  frame_info.depth = entity.GetShaderClipDepth();
   frame_info.mvp = pass.GetOrthographicTransform() * entity.GetTransform();
   frame_info.matrix = GetInverseEffectTransform();
-
-  Command cmd;
-  DEBUG_COMMAND_INFO(cmd, "LinearGradientSSBOFill");
-  cmd.stencil_reference = entity.GetClipDepth();
 
   auto geometry_result =
       GetGeometry()->GetPositionBuffer(renderer, entity, pass);
   auto options = OptionsFromPassAndEntity(pass, entity);
   if (geometry_result.prevent_overdraw) {
-    options.stencil_compare = CompareFunction::kEqual;
-    options.stencil_operation = StencilOperation::kIncrementClamp;
+    options.stencil_mode =
+        ContentContextOptions::StencilMode::kLegacyClipIncrement;
   }
   options.primitive_type = geometry_result.type;
-  cmd.pipeline = renderer.GetLinearGradientSSBOFillPipeline(options);
 
-  cmd.BindVertices(std::move(geometry_result.vertex_buffer));
-  FS::BindFragInfo(cmd,
+  pass.SetCommandLabel("LinearGradientSSBOFill");
+  pass.SetStencilReference(entity.GetClipDepth());
+  pass.SetPipeline(renderer.GetLinearGradientSSBOFillPipeline(options));
+  pass.SetVertexBuffer(std::move(geometry_result.vertex_buffer));
+  FS::BindFragInfo(pass,
                    renderer.GetTransientsBuffer().EmplaceUniform(frag_info));
-  FS::BindColorData(cmd, color_buffer);
-  VS::BindFrameInfo(cmd,
+  FS::BindColorData(pass, color_buffer);
+  VS::BindFrameInfo(pass,
                     renderer.GetTransientsBuffer().EmplaceUniform(frame_info));
 
-  if (!pass.AddCommand(std::move(cmd))) {
+  if (!pass.Draw().ok()) {
     return false;
   }
 

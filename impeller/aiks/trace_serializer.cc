@@ -140,7 +140,6 @@ std::string_view CanvasRecorderOpToString(CanvasRecorderOp op) {
     FLT_CANVAS_RECORDER_OP_TO_STRING(kClipRect);
     FLT_CANVAS_RECORDER_OP_TO_STRING(kClipOval);
     FLT_CANVAS_RECORDER_OP_TO_STRING(kClipRRect);
-    FLT_CANVAS_RECORDER_OP_TO_STRING(kDrawPicture);
     FLT_CANVAS_RECORDER_OP_TO_STRING(kDrawTextFrame);
     FLT_CANVAS_RECORDER_OP_TO_STRING(kDrawVertices);
     FLT_CANVAS_RECORDER_OP_TO_STRING(kDrawAtlas);
@@ -254,4 +253,9 @@ void TraceSerializer::Write(const std::vector<Rect>& matrices) {
 void TraceSerializer::Write(const std::vector<Color>& matrices) {
   buffer_ << "[std::vector<Color>] ";
 }
+
+void TraceSerializer::Write(const SourceRectConstraint& src_rect_constraint) {
+  buffer_ << "[SourceRectConstraint] ";
+}
+
 }  // namespace impeller

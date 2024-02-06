@@ -18,16 +18,13 @@ import 'path.dart';
 import 'picture.dart';
 import 'picture_recorder.dart';
 import 'rasterizer.dart';
-import 'render_canvas.dart';
-import 'render_canvas_factory.dart';
 
 /// This composites HTML views into the [ui.Scene].
 class HtmlViewEmbedder {
-  HtmlViewEmbedder(this.sceneHost, this.rasterizer, this.renderCanvasFactory);
+  HtmlViewEmbedder(this.sceneHost, this.rasterizer);
 
   final DomElement sceneHost;
-  final Rasterizer rasterizer;
-  final RenderCanvasFactory renderCanvasFactory;
+  final ViewRasterizer rasterizer;
 
   /// The context for the current frame.
   EmbedderFrameContext _context = EmbedderFrameContext();
@@ -53,7 +50,7 @@ class HtmlViewEmbedder {
   static const int maximumOverlays = 7;
 
   /// Canvases used to draw on top of platform views, keyed by platform view ID.
-  final Map<int, RenderCanvas> _overlays = <int, RenderCanvas>{};
+  final Map<int, DisplayCanvas> _overlays = <int, DisplayCanvas>{};
 
   /// The views that need to be recomposited into the scene on the next frame.
   final Set<int> _viewsToRecomposite = <int>{};
@@ -381,7 +378,7 @@ class HtmlViewEmbedder {
 
     int pictureRecorderIndex = 0;
     for (final OverlayGroup overlayGroup in _activeOverlayGroups) {
-      final RenderCanvas overlay = _overlays[overlayGroup.last]!;
+      final DisplayCanvas overlay = _overlays[overlayGroup.last]!;
       final List<CkPicture> pictures = <CkPicture>[];
       for (int i = 0; i < overlayGroup.visibleCount; i++) {
         pictures.add(
@@ -413,8 +410,7 @@ class HtmlViewEmbedder {
       // are going to be added back. Moving rather than removing and re-adding
       // the view helps it maintain state.
       disposeViews(diffResult.viewsToRemove
-          .where((int view) => !diffResult.viewsToAdd.contains(view))
-          .toSet());
+          .where((int view) => !diffResult.viewsToAdd.contains(view)));
       _activeCompositionOrder.addAll(_compositionOrder);
       unusedViews.removeAll(_compositionOrder);
 
@@ -441,17 +437,17 @@ class HtmlViewEmbedder {
         if (diffResult.addToBeginning) {
           final DomElement platformViewRoot = _viewClipChains[viewId]!.root;
           sceneHost.insertBefore(platformViewRoot, elementToInsertBefore);
-          final RenderCanvas? overlay = _overlays[viewId];
+          final DisplayCanvas? overlay = _overlays[viewId];
           if (overlay != null) {
             sceneHost.insertBefore(
-                overlay.htmlElement, elementToInsertBefore);
+                overlay.hostElement, elementToInsertBefore);
           }
         } else {
           final DomElement platformViewRoot = _viewClipChains[viewId]!.root;
           sceneHost.append(platformViewRoot);
-          final RenderCanvas? overlay = _overlays[viewId];
+          final DisplayCanvas? overlay = _overlays[viewId];
           if (overlay != null) {
-            sceneHost.append(overlay.htmlElement);
+            sceneHost.append(overlay.hostElement);
           }
         }
       }
@@ -460,7 +456,7 @@ class HtmlViewEmbedder {
       for (int i = 0; i < _compositionOrder.length; i++) {
         final int view = _compositionOrder[i];
         if (_overlays[view] != null) {
-          final DomElement overlayElement = _overlays[view]!.htmlElement;
+          final DomElement overlayElement = _overlays[view]!.hostElement;
           if (!overlayElement.isConnected!) {
             // This overlay wasn't added to the DOM.
             if (i == _compositionOrder.length - 1) {
@@ -474,7 +470,7 @@ class HtmlViewEmbedder {
         }
       }
     } else {
-      renderCanvasFactory.removeSurfacesFromDom();
+      rasterizer.removeOverlaysFromDom();
       for (int i = 0; i < _compositionOrder.length; i++) {
         final int viewId = _compositionOrder[i];
 
@@ -492,10 +488,10 @@ class HtmlViewEmbedder {
         }
 
         final DomElement platformViewRoot = _viewClipChains[viewId]!.root;
-        final RenderCanvas? overlay = _overlays[viewId];
+        final DisplayCanvas? overlay = _overlays[viewId];
         sceneHost.append(platformViewRoot);
         if (overlay != null) {
-          sceneHost.append(overlay.htmlElement);
+          sceneHost.append(overlay.hostElement);
         }
         _activeCompositionOrder.add(viewId);
         unusedViews.remove(viewId);
@@ -513,7 +509,7 @@ class HtmlViewEmbedder {
     );
   }
 
-  void disposeViews(Set<int> viewsToDispose) {
+  void disposeViews(Iterable<int> viewsToDispose) {
     for (final int viewId in viewsToDispose) {
       // Remove viewId from the _viewClipChains Map, and then from the DOM.
       final ViewClipChain? clipChain = _viewClipChains.remove(viewId);
@@ -528,8 +524,8 @@ class HtmlViewEmbedder {
 
   void _releaseOverlay(int viewId) {
     if (_overlays[viewId] != null) {
-      final RenderCanvas overlay = _overlays[viewId]!;
-      renderCanvasFactory.releaseCanvas(overlay);
+      final DisplayCanvas overlay = _overlays[viewId]!;
+      rasterizer.releaseOverlay(overlay);
       _overlays.remove(viewId);
     }
   }
@@ -569,7 +565,7 @@ class HtmlViewEmbedder {
     if (diffResult == null) {
       // Everything is going to be explicitly recomposited anyway. Release all
       // the surfaces and assign an overlay to all the surfaces needing one.
-      renderCanvasFactory.releaseCanvases();
+      rasterizer.releaseOverlays();
       _overlays.clear();
       viewsNeedingOverlays.forEach(_initializeOverlay);
     } else {
@@ -639,7 +635,7 @@ class HtmlViewEmbedder {
     assert(!_overlays.containsKey(viewId));
 
     // Try reusing a cached overlay created for another platform view.
-    final RenderCanvas overlay = renderCanvasFactory.getCanvas();
+    final DisplayCanvas overlay = rasterizer.getOverlay();
     _overlays[viewId] = overlay;
   }
 
@@ -662,8 +658,7 @@ class HtmlViewEmbedder {
 
   /// Disposes the state of this view embedder.
   void dispose() {
-    final Set<int> allViews = PlatformViewManager.instance.debugClear();
-    disposeViews(allViews);
+    disposeViews(_viewClipChains.keys);
     _context = EmbedderFrameContext();
     _currentCompositionParams.clear();
     debugCleanupSvgClipPaths();

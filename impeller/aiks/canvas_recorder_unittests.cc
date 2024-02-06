@@ -54,6 +54,8 @@ class Serializer {
 
   void Write(const std::vector<Color>& matrices) {}
 
+  void Write(const SourceRectConstraint& src_rect_constraint) {}
+
   CanvasRecorderOp last_op_;
 };
 }  // namespace
@@ -196,7 +198,7 @@ TEST(CanvasRecorder, DrawImage) {
 
 TEST(CanvasRecorder, DrawImageRect) {
   CanvasRecorder<Serializer> recorder;
-  recorder.DrawImageRect({}, {}, {}, {}, {});
+  recorder.DrawImageRect({}, {}, {}, {}, {}, SourceRectConstraint::kFast);
   ASSERT_EQ(recorder.GetSerializer().last_op_,
             CanvasRecorderOp::kDrawImageRect);
 }
@@ -223,12 +225,6 @@ TEST(CanvasRecorder, ClipRRect) {
   CanvasRecorder<Serializer> recorder;
   recorder.ClipRRect({}, {});
   ASSERT_EQ(recorder.GetSerializer().last_op_, CanvasRecorderOp::kClipRRect);
-}
-
-TEST(CanvasRecorder, DrawPicture) {
-  CanvasRecorder<Serializer> recorder;
-  recorder.DrawPicture({});
-  ASSERT_EQ(recorder.GetSerializer().last_op_, CanvasRecorderOp::kDrawPicture);
 }
 
 TEST(CanvasRecorder, DrawTextFrame) {
