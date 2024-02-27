@@ -25,6 +25,7 @@ import androidx.activity.OnBackPressedDispatcherOwner;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.VisibleForTesting;
+import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
 import io.flutter.Log;
@@ -294,8 +295,8 @@ public class PlatformPlugin {
       // support will allow users to restore the system ui and dismiss the overlays.
       // Not compatible with top/bottom overlays enabled.
 
-      window.setDecorFitsSystemWindows(false);
-      windowInsetsControllerCompat.hide(WindowInsets.Type.systemBars());
+      WindowCompat.setDecorFitsSystemWindows(window, false);
+      windowInsetsControllerCompat.hide(WindowInsetsCompat.Type.systemBars());
       // Introduced in 30 and deprecated immediately in 31.
       windowInsetsControllerCompat.setSystemBarsBehavior(
           WindowInsetsControllerCompat.BEHAVIOR_SHOW_BARS_BY_TOUCH);
@@ -309,8 +310,8 @@ public class PlatformPlugin {
       // support will allow users to restore the system ui and dismiss the overlays.
       // Not compatible with top/bottom overlays enabled.
 
-      window.setDecorFitsSystemWindows(false);
-      windowInsetsControllerCompat.hide(WindowInsets.Type.systemBars());
+      WindowCompat.setDecorFitsSystemWindows(window, false);
+      windowInsetsControllerCompat.hide(WindowInsetsCompat.Type.systemBars());
       windowInsetsControllerCompat.setSystemBarsBehavior(
           WindowInsetsControllerCompat.BEHAVIOR_DEFAULT);
     } else if (systemUiMode == PlatformChannel.SystemUiMode.IMMERSIVE_STICKY
@@ -321,8 +322,8 @@ public class PlatformPlugin {
       // the swipe gesture. The overlays cannot be dismissed, so adding callback support will
       // allow users to restore the system ui and dismiss the overlays.
       // Not compatible with top/bottom overlays enabled.
-      window.setDecorFitsSystemWindows(false);
-      windowInsetsControllerCompat.hide(WindowInsets.Type.systemBars());
+      WindowCompat.setDecorFitsSystemWindows(window, false);
+      windowInsetsControllerCompat.hide(WindowInsetsCompat.Type.systemBars());
       windowInsetsControllerCompat.setSystemBarsBehavior(
           WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
     } else if (systemUiMode == PlatformChannel.SystemUiMode.EDGE_TO_EDGE
@@ -332,8 +333,8 @@ public class PlatformPlugin {
       // SDK 29 and up will apply a translucent body scrim behind 2/3 button navigation bars
       // to ensure contrast with buttons on the nav and status bars, unless the contrast is not
       // enforced in the overlay styling.
-      windowInsetsControllerCompat.show(WindowInsets.Type.systemBars());
-      window.setDecorFitsSystemWindows(false);
+      WindowCompat.setDecorFitsSystemWindows(window, false);
+      windowInsetsControllerCompat.show(WindowInsetsCompat.Type.systemBars());
       windowInsetsControllerCompat.setSystemBarsBehavior(
           WindowInsetsControllerCompat.BEHAVIOR_DEFAULT);
     } else {
