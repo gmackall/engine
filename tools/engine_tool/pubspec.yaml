@@ -23,6 +23,7 @@ dependencies:
   engine_repo_tools:
     path: ../pkg/engine_repo_tools
   file: any
+  logging: any
   meta: any
   path: any
   platform: any
@@ -51,6 +52,8 @@ dependency_overrides:
     path: ../../../third_party/dart/third_party/pkg/file/packages/file
   litetest:
     path: ../../testing/litetest
+  logging:
+    path: ../../../third_party/dart/third_party/pkg/logging
   meta:
     path: ../../../third_party/dart/pkg/meta
   path:
@@ -63,3 +66,11 @@ dependency_overrides:
     path: ../../third_party/pkg/process_runner
   smith:
     path: ../../../third_party/dart/pkg/smith
+  source_span:
+    path: ../../../third_party/dart/third_party/pkg/source_span
+  string_scanner:
+    path: ../../../third_party/dart/third_party/pkg/string_scanner
+  term_glyph:
+    path: ../../../third_party/dart/third_party/pkg/term_glyph
+  yaml:
+    path: ../../../third_party/dart/third_party/pkg/yaml

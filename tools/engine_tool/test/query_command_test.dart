@@ -10,7 +10,9 @@ import 'package:engine_build_configs/engine_build_configs.dart';
 import 'package:engine_repo_tools/engine_repo_tools.dart';
 import 'package:engine_tool/src/commands/command_runner.dart';
 import 'package:engine_tool/src/environment.dart';
+import 'package:engine_tool/src/logger.dart';
 import 'package:litetest/litetest.dart';
+import 'package:logging/logging.dart' as log;
 import 'package:platform/platform.dart';
 import 'package:process_fakes/process_fakes.dart';
 import 'package:process_runner/process_runner.dart';
@@ -29,17 +31,20 @@ void main() {
 
   final BuildConfig linuxTestConfig = BuildConfig.fromJson(
     path: 'ci/builders/linux_test_config.json',
-    map: convert.jsonDecode(fixtures.testConfig('Linux')) as Map<String, Object?>,
+    map: convert.jsonDecode(fixtures.testConfig('Linux'))
+        as Map<String, Object?>,
   );
 
   final BuildConfig macTestConfig = BuildConfig.fromJson(
     path: 'ci/builders/mac_test_config.json',
-    map: convert.jsonDecode(fixtures.testConfig('Mac-12')) as Map<String, Object?>,
+    map: convert.jsonDecode(fixtures.testConfig('Mac-12'))
+        as Map<String, Object?>,
   );
 
   final BuildConfig winTestConfig = BuildConfig.fromJson(
     path: 'ci/builders/win_test_config.json',
-    map: convert.jsonDecode(fixtures.testConfig('Windows-11')) as Map<String, Object?>,
+    map: convert.jsonDecode(fixtures.testConfig('Windows-11'))
+        as Map<String, Object?>,
   );
 
   final Map<String, BuildConfig> configs = <String, BuildConfig>{
@@ -49,7 +54,7 @@ void main() {
     'win_test_config': winTestConfig,
   };
 
-  Environment linuxEnv(StringBuffer stderr, StringBuffer stdout) {
+  Environment linuxEnv(Logger logger) {
     return Environment(
       abi: ffi.Abi.linuxX64,
       engine: engine,
@@ -57,73 +62,79 @@ void main() {
       processRunner: ProcessRunner(
         processManager: FakeProcessManager(),
       ),
-      stderr: stderr,
-      stdout: stdout,
+      logger: logger,
     );
   }
 
+  List<String> stringsFromLogs(List<log.LogRecord> logs) {
+    return logs.map((log.LogRecord r) => r.message).toList();
+  }
+
   test('query command returns builds for the host platform.', () async {
-    final StringBuffer stderr = StringBuffer();
-    final StringBuffer stdout = StringBuffer();
-    final Environment env = linuxEnv(stderr, stdout);
+    final Logger logger = Logger.test();
+    final Environment env = linuxEnv(logger);
     final ToolCommandRunner runner = ToolCommandRunner(
       environment: env,
       configs: configs,
     );
     final int result = await runner.run(<String>[
-      'query', 'builds',
+      'query',
+      'builders',
     ]);
     expect(result, equals(0));
     expect(
-      stdout.toString().trim().split('\n'),
+      stringsFromLogs(logger.testLogs),
       equals(<String>[
-        'Add --verbose to see detailed information about each builder',
-        '',
-        '"linux_test_config" builder:',
-        '  "build_name" config',
-        '"linux_test_config2" builder:',
-        '  "build_name" config',
+        'Add --verbose to see detailed information about each builder\n',
+        '\n',
+        '"linux_test_config" builder:\n',
+        '   "build_name" config\n',
+        '"linux_test_config2" builder:\n',
+        '   "build_name" config\n',
       ]),
     );
   });
 
-  test('query command with --builder returns only from the named builder.', () async {
-    final StringBuffer stderr = StringBuffer();
-    final StringBuffer stdout = StringBuffer();
-    final Environment env = linuxEnv(stderr, stdout);
+  test('query command with --builder returns only from the named builder.',
+      () async {
+    final Logger logger = Logger.test();
+    final Environment env = linuxEnv(logger);
     final ToolCommandRunner runner = ToolCommandRunner(
       environment: env,
       configs: configs,
     );
     final int result = await runner.run(<String>[
-      'query', 'builds', '--builder', 'linux_test_config',
+      'query',
+      'builders',
+      '--builder',
+      'linux_test_config',
     ]);
     expect(result, equals(0));
     expect(
-      stdout.toString().trim().split('\n'),
-      equals(<String>[
-        'Add --verbose to see detailed information about each builder',
-        '',
-        '"linux_test_config" builder:',
-        '  "build_name" config',
-      ]),
-    );
+        stringsFromLogs(logger.testLogs),
+        equals(<String>[
+          'Add --verbose to see detailed information about each builder\n',
+          '\n',
+          '"linux_test_config" builder:\n',
+          '   "build_name" config\n',
+        ]));
   });
 
   test('query command with --all returns all builds.', () async {
-    final StringBuffer stderr = StringBuffer();
-    final StringBuffer stdout = StringBuffer();
-    final Environment env = linuxEnv(stderr, stdout);
+    final Logger logger = Logger.test();
+    final Environment env = linuxEnv(logger);
     final ToolCommandRunner runner = ToolCommandRunner(
       environment: env,
       configs: configs,
     );
     final int result = await runner.run(<String>[
-      'query', 'builds', '--all',
+      'query',
+      'builders',
+      '--all',
     ]);
     expect(result, equals(0));
     expect(
-      stdout.toString().trim().split('\n').length,
+      logger.testLogs.length,
       equals(10),
     );
   });
