@@ -39,6 +39,7 @@ import android.window.OnBackInvokedDispatcher;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.VisibleForTesting;
+import androidx.core.view.WindowCompat;
 import androidx.lifecycle.Lifecycle;
 import androidx.lifecycle.LifecycleOwner;
 import androidx.lifecycle.LifecycleRegistry;
@@ -778,7 +779,7 @@ public class FlutterActivity extends Activity
       window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
       window.setStatusBarColor(0x40000000);
       // todo: conditionalize on window.isFloating
-      window.setDecorFitsSystemWindows(false);
+      WindowCompat.setDecorFitsSystemWindows(window,false);
     }
   }
 
