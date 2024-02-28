@@ -779,7 +779,7 @@ public class FlutterActivity extends Activity
       window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
       window.setStatusBarColor(0x40000000);
       // todo: conditionalize on window.isFloating
-      WindowCompat.setDecorFitsSystemWindows(window,false);
+      WindowCompat.setDecorFitsSystemWindows(window, false);
     }
   }
 
