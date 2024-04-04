@@ -41,38 +41,7 @@ android {
         }
     }
 
-    testOptions {
-        unitTests {
-            includeAndroidResources = true
-        }
-
-    }
-
     dependencies {
         implementation fileTree(include: ["*.jar"], dir: "../../../../third_party/android_embedding_dependencies/lib/")
     }
 }
-
-//gradle.projectsEvaluated {
-//    tasks.withType(JavaCompile) {
-//        configure {
-//            dependsOn('compileDebugLibraryResources')
-//            dependsOn('checkDebugUnitTestAarMetadata')
-//            dependsOn('generateDebugUnitTestResValues')
-//            dependsOn('processDebugManifest')
-//            dependsOn('mergeDebugShaders')
-//            dependsOn('mergeDebugUnitTestResources')
-//            dependsOn('mergeDebugAssets')
-//            dependsOn('processDebugUnitTestManifest')
-//            dependsOn('processDebugUnitTestResources')
-//            dependsOn('packageDebugAssets')
-//            dependsOn('mergeDebugUnitTestAssets')
-//        }
-//    }
-//}
-
-//tasks.named('compileDebugJavaWithJavac').configure {evaluationDependsOn('compileDebugLibraryResources')}
-
-
-//project.properties["build_dir"] = '/Users/mackall/development/engine/src/out/android_debug_arm64/robolectric_tests/build/'
-//project.properties["flutter_jar"] = '/Users/mackall/development/engine/src/out/android_debug_arm64/flutter.jar'
