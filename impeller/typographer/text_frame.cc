@@ -45,14 +45,14 @@ bool TextFrame::MaybeHasOverlapping() const {
   // accumulated bounds rect. This gives faster but less precise information
   // on text runs.
   auto first_position = glyph_positions[0];
-  auto overlapping_rect =
-      Rect(first_position.position + first_position.glyph.bounds.origin,
-           first_position.glyph.bounds.size);
+  auto overlapping_rect = Rect::MakeOriginSize(
+      first_position.position + first_position.glyph.bounds.GetOrigin(),
+      first_position.glyph.bounds.GetSize());
   for (auto i = 1u; i < glyph_positions.size(); i++) {
     auto glyph_position = glyph_positions[i];
-    auto glyph_rect =
-        Rect(glyph_position.position + glyph_position.glyph.bounds.origin,
-             glyph_position.glyph.bounds.size);
+    auto glyph_rect = Rect::MakeOriginSize(
+        glyph_position.position + glyph_position.glyph.bounds.GetOrigin(),
+        glyph_position.glyph.bounds.GetSize());
     auto intersection = glyph_rect.Intersection(overlapping_rect);
     if (intersection.has_value()) {
       return true;
@@ -64,7 +64,12 @@ bool TextFrame::MaybeHasOverlapping() const {
 
 // static
 Scalar TextFrame::RoundScaledFontSize(Scalar scale, Scalar point_size) {
-  return std::round(scale * 100) / 100;
+  // An arbitrarily chosen maximum text scale to ensure that regardless of the
+  // CTM, a glyph will fit in the atlas. If we clamp significantly, this may
+  // reduce fidelity but is preferable to the alternative of failing to render.
+  constexpr Scalar kMaximumTextScale = 48;
+  Scalar result = std::round(scale * 100) / 100;
+  return std::clamp(result, 0.0f, kMaximumTextScale);
 }
 
 void TextFrame::CollectUniqueFontGlyphPairs(FontGlyphMap& glyph_map,

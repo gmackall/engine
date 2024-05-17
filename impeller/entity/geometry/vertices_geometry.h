@@ -2,14 +2,15 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#pragma once
+#ifndef FLUTTER_IMPELLER_ENTITY_GEOMETRY_VERTICES_GEOMETRY_H_
+#define FLUTTER_IMPELLER_ENTITY_GEOMETRY_VERTICES_GEOMETRY_H_
 
 #include "impeller/entity/geometry/geometry.h"
 
 namespace impeller {
 
 /// @brief A geometry that is created from a vertices object.
-class VerticesGeometry : public Geometry {
+class VerticesGeometry final : public Geometry {
  public:
   enum class VertexMode {
     kTriangles,
@@ -24,29 +25,21 @@ class VerticesGeometry : public Geometry {
                    Rect bounds,
                    VerticesGeometry::VertexMode vertex_mode);
 
-  ~VerticesGeometry();
+  ~VerticesGeometry() = default;
 
-  GeometryResult GetPositionColorBuffer(const ContentContext& renderer,
-                                        const Entity& entity,
-                                        RenderPass& pass);
-
-  // |Geometry|
-  GeometryResult GetPositionUVBuffer(Rect texture_coverage,
-                                     Matrix effect_transform,
-                                     const ContentContext& renderer,
-                                     const Entity& entity,
-                                     RenderPass& pass) override;
+  GeometryResult GetPositionUVColorBuffer(Rect texture_coverage,
+                                          Matrix effect_transform,
+                                          const ContentContext& renderer,
+                                          const Entity& entity,
+                                          RenderPass& pass) const;
 
   // |Geometry|
   GeometryResult GetPositionBuffer(const ContentContext& renderer,
                                    const Entity& entity,
-                                   RenderPass& pass) override;
+                                   RenderPass& pass) const override;
 
   // |Geometry|
   std::optional<Rect> GetCoverage(const Matrix& transform) const override;
-
-  // |Geometry|
-  GeometryVertexType GetVertexType() const override;
 
   bool HasVertexColors() const;
 
@@ -69,3 +62,5 @@ class VerticesGeometry : public Geometry {
 };
 
 }  // namespace impeller
+
+#endif  // FLUTTER_IMPELLER_ENTITY_GEOMETRY_VERTICES_GEOMETRY_H_

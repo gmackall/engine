@@ -219,22 +219,22 @@ static std::vector<const char*> ProfilingFlags(bool enable_profiling) {
   // flags.
   if (enable_profiling) {
     return {
-      // This is the default. But just be explicit.
-      "--profiler",
-          // This instructs the profiler to walk C++ frames, and to include
-          // them in the profile.
-          "--profile-vm",
+        // This is the default. But just be explicit.
+        "--profiler",
+        // This instructs the profiler to walk C++ frames, and to include
+        // them in the profile.
+        "--profile-vm",
 #if FML_OS_IOS && FML_ARCH_CPU_ARM_FAMILY && FML_ARCH_CPU_ARMEL
-          // Set the profiler interrupt period to 500Hz instead of the
-          // default 1000Hz on 32-bit iOS devices to reduce average and worst
-          // case frame build times.
-          //
-          // Note: profile_period is time in microseconds between sampling
-          // events, not frequency. Frequency is calculated 1/period (or
-          // 1,000,000 / 2,000 -> 500Hz in this case).
-          "--profile_period=2000",
+        // Set the profiler interrupt period to 500Hz instead of the
+        // default 1000Hz on 32-bit iOS devices to reduce average and worst
+        // case frame build times.
+        //
+        // Note: profile_period is time in microseconds between sampling
+        // events, not frequency. Frequency is calculated 1/period (or
+        // 1,000,000 / 2,000 -> 500Hz in this case).
+        "--profile_period=2000",
 #else
-          "--profile_period=1000",
+        "--profile_period=1000",
 #endif  // FML_OS_IOS && FML_ARCH_CPU_ARM_FAMILY && FML_ARCH_CPU_ARMEL
     };
   } else {
@@ -282,12 +282,19 @@ size_t DartVM::GetVMLaunchCount() {
   return gVMLaunchCount;
 }
 
+// Minimum and maximum number of worker threads.
+static constexpr size_t kMinCount = 2;
+static constexpr size_t kMaxCount = 4;
+
 DartVM::DartVM(const std::shared_ptr<const DartVMData>& vm_data,
                std::shared_ptr<IsolateNameServer> isolate_name_server)
     : settings_(vm_data->GetSettings()),
       concurrent_message_loop_(fml::ConcurrentMessageLoop::Create(
-          fml::EfficiencyCoreCount().value_or(
-              std::thread::hardware_concurrency()))),
+          std::clamp(fml::EfficiencyCoreCount().value_or(
+                         std::thread::hardware_concurrency()) /
+                         2,
+                     kMinCount,
+                     kMaxCount))),
       skia_concurrent_executor_(
           [runner = concurrent_message_loop_->GetTaskRunner()](
               const fml::closure& work) { runner->PostTask(work); }),

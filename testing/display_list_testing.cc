@@ -70,9 +70,6 @@ std::ostream& operator<<(std::ostream& os, const DlPaint& paint) {
   if (paint.getMaskFilter()) {
     os << ", " << paint.getMaskFilter();
   }
-  if (paint.isDither()) {
-    os << ", dither: " << paint.isDither();
-  }
   if (paint.isInvertColors()) {
     os << ", invertColors: " << paint.isInvertColors();
   }
@@ -362,9 +359,6 @@ std::ostream& DisplayListStreamDispatcher::out_array(std::string name,  // NOLIN
 void DisplayListStreamDispatcher::setAntiAlias(bool aa) {
   startl() << "setAntiAlias(" << aa << ");" << std::endl;
 }
-void DisplayListStreamDispatcher::setDither(bool dither) {
-  startl() << "setDither(" << dither << ");" << std::endl;
-}
 void DisplayListStreamDispatcher::setDrawStyle(DlDrawStyle style) {
   startl() << "setStyle(" << style << ");" << std::endl;
 }
@@ -634,7 +628,7 @@ void DisplayListStreamDispatcher::save() {
   startl() << "{" << std::endl;
   indent();
 }
-void DisplayListStreamDispatcher::saveLayer(const SkRect* bounds,
+void DisplayListStreamDispatcher::saveLayer(const SkRect& bounds,
                                             const SaveLayerOptions options,
                                             const DlImageFilter* backdrop) {
   startl() << "saveLayer(" << bounds << ", " << options;

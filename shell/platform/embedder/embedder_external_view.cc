@@ -10,7 +10,8 @@
 
 #ifdef IMPELLER_SUPPORTS_RENDERING
 #include "impeller/display_list/dl_dispatcher.h"  // nogncheck
-#endif                                            // IMPELLER_SUPPORTS_RENDERING
+#define ENABLE_EXPERIMENTAL_CANVAS false
+#endif  // IMPELLER_SUPPORTS_RENDERING
 
 namespace flutter {
 
@@ -43,7 +44,7 @@ EmbedderExternalView::~EmbedderExternalView() = default;
 
 EmbedderExternalView::RenderTargetDescriptor
 EmbedderExternalView::CreateRenderTargetDescriptor() const {
-  return {view_identifier_, render_surface_size_};
+  return RenderTargetDescriptor(render_surface_size_);
 }
 
 DlCanvas* EmbedderExternalView::GetCanvas() {
@@ -62,9 +63,8 @@ bool EmbedderExternalView::HasPlatformView() const {
   return view_identifier_.platform_view_id.has_value();
 }
 
-std::list<SkRect> EmbedderExternalView::GetEngineRenderedContentsRegion(
-    const SkRect& query) const {
-  return slice_->searchNonOverlappingDrawnRects(query);
+const DlRegion& EmbedderExternalView::GetDlRegion() const {
+  return slice_->getRegion();
 }
 
 bool EmbedderExternalView::HasEngineRenderedContents() {
@@ -75,6 +75,7 @@ bool EmbedderExternalView::HasEngineRenderedContents() {
   DlOpSpy dl_op_spy;
   slice_->dispatch(dl_op_spy);
   has_engine_rendered_contents_ = dl_op_spy.did_draw() && !slice_->is_empty();
+  // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
   return has_engine_rendered_contents_.value();
 }
 
@@ -87,7 +88,8 @@ const EmbeddedViewParams* EmbedderExternalView::GetEmbeddedViewParams() const {
   return embedded_view_params_.get();
 }
 
-bool EmbedderExternalView::Render(const EmbedderRenderTarget& render_target) {
+bool EmbedderExternalView::Render(const EmbedderRenderTarget& render_target,
+                                  bool clear_surface) {
   TRACE_EVENT0("flutter", "EmbedderExternalView::Render");
   TryEndRecording();
   FML_DCHECK(HasEngineRenderedContents())
@@ -102,14 +104,39 @@ bool EmbedderExternalView::Render(const EmbedderRenderTarget& render_target) {
     auto dl_builder = DisplayListBuilder();
     dl_builder.SetTransform(&surface_transformation_);
     slice_->render_into(&dl_builder);
+    auto display_list = dl_builder.Build();
 
+#if ENABLE_EXPERIMENTAL_CANVAS
+    auto cull_rect =
+        impeller::IRect::MakeSize(impeller_target->GetRenderTargetSize());
+    SkIRect sk_cull_rect =
+        SkIRect::MakeWH(cull_rect.GetWidth(), cull_rect.GetHeight());
+
+    impeller::TextFrameDispatcher collector(aiks_context->GetContentContext(),
+                                            impeller::Matrix());
+
+    impeller::ExperimentalDlDispatcher impeller_dispatcher(
+        aiks_context->GetContentContext(), *impeller_target,
+        /*supports_readback=*/false, cull_rect);
+    display_list->Dispatch(impeller_dispatcher, sk_cull_rect);
+    impeller_dispatcher.FinishRecording();
+    aiks_context->GetContentContext().GetTransientsBuffer().Reset();
+    aiks_context->GetContentContext().GetLazyGlyphAtlas()->ResetTextFrames();
+
+    return true;
+#else
     auto dispatcher = impeller::DlDispatcher();
-    dispatcher.drawDisplayList(dl_builder.Build(), 1);
+    dispatcher.drawDisplayList(display_list, 1);
     return aiks_context->Render(dispatcher.EndRecordingAsPicture(),
-                                *impeller_target);
+                                *impeller_target, /*reset_host_buffer=*/true);
+#endif
   }
 #endif  // IMPELLER_SUPPORTS_RENDERING
 
+#if SLIMPELLER
+  FML_LOG(FATAL) << "Impeller opt-out unavailable.";
+  return false;
+#else   // SLIMPELLER
   auto skia_surface = render_target.GetSkiaSurface();
   if (!skia_surface) {
     return false;
@@ -124,10 +151,13 @@ bool EmbedderExternalView::Render(const EmbedderRenderTarget& render_target) {
   DlSkCanvasAdapter dl_canvas(canvas);
   int restore_count = dl_canvas.GetSaveCount();
   dl_canvas.SetTransform(surface_transformation_);
-  dl_canvas.Clear(DlColor::kTransparent());
+  if (clear_surface) {
+    dl_canvas.Clear(DlColor::kTransparent());
+  }
   slice_->render_into(&dl_canvas);
   dl_canvas.RestoreToCount(restore_count);
   dl_canvas.Flush();
+#endif  //  !SLIMPELLER
 
   return true;
 }

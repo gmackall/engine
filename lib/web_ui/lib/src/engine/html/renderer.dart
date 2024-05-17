@@ -20,8 +20,6 @@ class HtmlRenderer implements Renderer {
 
   late final HtmlFontCollection _fontCollection = HtmlFontCollection();
 
-  late FlutterViewEmbedder _viewEmbedder;
-
   @override
   HtmlFontCollection get fontCollection => _fontCollection;
 
@@ -35,11 +33,6 @@ class HtmlRenderer implements Renderer {
     });
 
     _instance = this;
-  }
-
-  @override
-  void reset(FlutterViewEmbedder embedder) {
-    _viewEmbedder = embedder;
   }
 
   @override
@@ -262,6 +255,7 @@ class HtmlRenderer implements Renderer {
     letterSpacing: letterSpacing,
     wordSpacing: wordSpacing,
     height: height,
+    leadingDistribution: leadingDistribution,
     locale: locale,
     background: background,
     foreground: foreground,
@@ -327,9 +321,13 @@ class HtmlRenderer implements Renderer {
     CanvasParagraphBuilder(style as EngineParagraphStyle);
 
   @override
-  void renderScene(ui.Scene scene) {
-    _viewEmbedder.addSceneToSceneHost((scene as SurfaceScene).webOnlyRootElement);
-    frameTimingsOnRasterFinish();
+  Future<void> renderScene(ui.Scene scene, ui.FlutterView view) async {
+    final EngineFlutterView implicitView = EnginePlatformDispatcher.instance.implicitView!;
+    scene as SurfaceScene;
+    implicitView.dom.setScene(scene.webOnlyRootElement!);
+    final FrameTimingRecorder? recorder = scene.timingRecorder;
+    recorder?.recordRasterFinish();
+    recorder?.submitTimings();
   }
 
   @override

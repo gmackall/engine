@@ -2,20 +2,18 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#pragma once
+#ifndef FLUTTER_IMPELLER_AIKS_PAINT_H_
+#define FLUTTER_IMPELLER_AIKS_PAINT_H_
 
 #include <memory>
 
-#include "flutter/fml/macros.h"
 #include "impeller/aiks/color_filter.h"
 #include "impeller/aiks/color_source.h"
 #include "impeller/aiks/image_filter.h"
 #include "impeller/entity/contents/contents.h"
 #include "impeller/entity/contents/filters/color_filter_contents.h"
 #include "impeller/entity/contents/filters/filter_contents.h"
-#include "impeller/entity/contents/linear_gradient_contents.h"
-#include "impeller/entity/contents/radial_gradient_contents.h"
-#include "impeller/entity/contents/sweep_gradient_contents.h"
+#include "impeller/entity/contents/texture_contents.h"
 #include "impeller/entity/entity.h"
 #include "impeller/entity/geometry/geometry.h"
 #include "impeller/geometry/color.h"
@@ -45,6 +43,9 @@ struct Paint {
     std::shared_ptr<FilterContents> CreateMaskBlur(
         std::shared_ptr<ColorSourceContents> color_source_contents,
         const std::shared_ptr<ColorFilter>& color_filter) const;
+
+    std::shared_ptr<FilterContents> CreateMaskBlur(
+        std::shared_ptr<TextureContents> texture_contents) const;
 
     std::shared_ptr<FilterContents> CreateMaskBlur(
         const FilterInput::Ref& input,
@@ -88,11 +89,8 @@ struct Paint {
       std::shared_ptr<Contents> input,
       const Matrix& effect_transform = Matrix()) const;
 
-  std::shared_ptr<Contents> CreateContentsForEntity(const Path& path = {},
-                                                    bool cover = false) const;
-
   std::shared_ptr<Contents> CreateContentsForGeometry(
-      std::shared_ptr<Geometry> geometry) const;
+      const std::shared_ptr<Geometry>& geometry) const;
 
   /// @brief   Whether this paint has a color filter that can apply opacity
   bool HasColorFilter() const;
@@ -113,3 +111,5 @@ struct Paint {
 };
 
 }  // namespace impeller
+
+#endif  // FLUTTER_IMPELLER_AIKS_PAINT_H_

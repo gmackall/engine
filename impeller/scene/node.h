@@ -2,23 +2,20 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#pragma once
+#ifndef FLUTTER_IMPELLER_SCENE_NODE_H_
+#define FLUTTER_IMPELLER_SCENE_NODE_H_
 
 #include <memory>
-#include <mutex>
 #include <optional>
 #include <vector>
 
-#include "flutter/fml/macros.h"
 #include "impeller/base/thread.h"
 #include "impeller/base/thread_safety.h"
 #include "impeller/core/texture.h"
 #include "impeller/geometry/matrix.h"
-#include "impeller/renderer/render_target.h"
 #include "impeller/scene/animation/animation.h"
 #include "impeller/scene/animation/animation_clip.h"
 #include "impeller/scene/animation/animation_player.h"
-#include "impeller/scene/camera.h"
 #include "impeller/scene/mesh.h"
 #include "impeller/scene/scene_encoder.h"
 #include "impeller/scene/skin.h"
@@ -128,10 +125,14 @@ class Node final {
 
   std::unique_ptr<Skin> skin_;
 
-  FML_DISALLOW_COPY_AND_ASSIGN(Node);
+  Node(const Node&) = delete;
+
+  Node& operator=(const Node&) = delete;
 
   friend Scene;
 };
 
 }  // namespace scene
 }  // namespace impeller
+
+#endif  // FLUTTER_IMPELLER_SCENE_NODE_H_

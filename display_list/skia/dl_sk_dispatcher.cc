@@ -17,7 +17,10 @@ const SkPaint* DlSkCanvasDispatcher::safe_paint(bool use_attributes) {
   if (use_attributes) {
     // The accumulated SkPaint object will already have incorporated
     // any attribute overrides.
-    return &paint();
+    // Any rendering operation that uses an optional paint will ignore
+    // the shader in the paint so we inform that |paint()| method so
+    // that it can set the dither flag appropriately.
+    return &paint(false);
   } else if (has_opacity()) {
     temp_paint_.setAlphaf(opacity());
     return &temp_paint_;
@@ -40,10 +43,10 @@ void DlSkCanvasDispatcher::restore() {
   canvas_->restore();
   restore_opacity();
 }
-void DlSkCanvasDispatcher::saveLayer(const SkRect* bounds,
+void DlSkCanvasDispatcher::saveLayer(const SkRect& bounds,
                                      const SaveLayerOptions options,
                                      const DlImageFilter* backdrop) {
-  if (bounds == nullptr && options.can_distribute_opacity() &&
+  if (!options.content_is_clipped() && options.can_distribute_opacity() &&
       backdrop == nullptr) {
     // We know that:
     // - no bounds is needed for clipping here
@@ -64,8 +67,9 @@ void DlSkCanvasDispatcher::saveLayer(const SkRect* bounds,
     TRACE_EVENT0("flutter", "Canvas::saveLayer");
     const SkPaint* paint = safe_paint(options.renders_with_attributes());
     const sk_sp<SkImageFilter> sk_backdrop = ToSk(backdrop);
+    const SkRect* sl_bounds = options.bounds_from_caller() ? &bounds : nullptr;
     canvas_->saveLayer(
-        SkCanvas::SaveLayerRec(bounds, paint, sk_backdrop.get(), 0));
+        SkCanvas::SaveLayerRec(sl_bounds, paint, sk_backdrop.get(), 0));
     // saveLayer will apply the current opacity on behalf of the children
     // so they will inherit an opaque opacity.
     save_opacity(SK_Scalar1);

@@ -2,12 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#pragma once
+#ifndef FLUTTER_IMPELLER_SCENE_SKIN_H_
+#define FLUTTER_IMPELLER_SCENE_SKIN_H_
 
 #include <memory>
-#include <optional>
-
-#include "flutter/fml/macros.h"
 
 #include "impeller/core/allocator.h"
 #include "impeller/core/texture.h"
@@ -35,8 +33,12 @@ class Skin final {
   std::vector<std::shared_ptr<Node>> joints_;
   std::vector<Matrix> inverse_bind_matrices_;
 
-  FML_DISALLOW_COPY_AND_ASSIGN(Skin);
+  Skin(const Skin&) = delete;
+
+  Skin& operator=(const Skin&) = delete;
 };
 
 }  // namespace scene
 }  // namespace impeller
+
+#endif  // FLUTTER_IMPELLER_SCENE_SKIN_H_

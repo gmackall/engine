@@ -2,20 +2,16 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#import <UIKit/UIGestureRecognizerSubclass.h>
-
-#include <list>
-#include <map>
-#include <memory>
-#include <string>
-
-#include "flutter/common/graphics/persistent_cache.h"
-#include "flutter/fml/platform/darwin/scoped_nsobject.h"
-#import "flutter/shell/platform/darwin/common/framework/Headers/FlutterChannels.h"
-#import "flutter/shell/platform/darwin/ios/framework/Source/FlutterOverlayView.h"
 #import "flutter/shell/platform/darwin/ios/framework/Source/FlutterPlatformViews_Internal.h"
-#import "flutter/shell/platform/darwin/ios/framework/Source/FlutterViewController_Internal.h"
+
+#include <Metal/Metal.h>
+
+#include "flutter/fml/platform/darwin/scoped_nsobject.h"
+#import "flutter/shell/platform/darwin/ios/framework/Source/FlutterOverlayView.h"
+#import "flutter/shell/platform/darwin/ios/framework/Source/FlutterView.h"
 #import "flutter/shell/platform/darwin/ios/ios_surface.h"
+
+FLUTTER_ASSERT_ARC
 
 @implementation UIView (FirstResponder)
 - (BOOL)flt_hasFirstResponderInViewHierarchySubtree {
@@ -85,17 +81,19 @@ BOOL canApplyBlurBackdrop = YES;
 
 std::shared_ptr<FlutterPlatformViewLayer> FlutterPlatformViewLayerPool::GetLayer(
     GrDirectContext* gr_context,
-    const std::shared_ptr<IOSContext>& ios_context) {
+    const std::shared_ptr<IOSContext>& ios_context,
+    MTLPixelFormat pixel_format) {
   if (available_layer_index_ >= layers_.size()) {
     std::shared_ptr<FlutterPlatformViewLayer> layer;
-    fml::scoped_nsobject<FlutterOverlayView> overlay_view;
-    fml::scoped_nsobject<FlutterOverlayView> overlay_view_wrapper;
+    fml::scoped_nsobject<UIView> overlay_view;
+    fml::scoped_nsobject<UIView> overlay_view_wrapper;
 
-    if (!gr_context) {
+    bool impeller_enabled = !!ios_context->GetImpellerContext();
+    if (!gr_context && !impeller_enabled) {
       overlay_view.reset([[FlutterOverlayView alloc] init]);
       overlay_view_wrapper.reset([[FlutterOverlayView alloc] init]);
 
-      auto ca_layer = fml::scoped_nsobject<CALayer>{[[overlay_view.get() layer] retain]};
+      auto ca_layer = fml::scoped_nsobject<CALayer>{[overlay_view.get() layer]};
       std::unique_ptr<IOSSurface> ios_surface = IOSSurface::Create(ios_context, ca_layer);
       std::unique_ptr<Surface> surface = ios_surface->CreateGPUSurface();
 
@@ -104,10 +102,12 @@ std::shared_ptr<FlutterPlatformViewLayer> FlutterPlatformViewLayerPool::GetLayer
           std::move(surface));
     } else {
       CGFloat screenScale = [UIScreen mainScreen].scale;
-      overlay_view.reset([[FlutterOverlayView alloc] initWithContentsScale:screenScale]);
-      overlay_view_wrapper.reset([[FlutterOverlayView alloc] initWithContentsScale:screenScale]);
+      overlay_view.reset([[FlutterOverlayView alloc] initWithContentsScale:screenScale
+                                                               pixelFormat:pixel_format]);
+      overlay_view_wrapper.reset([[FlutterOverlayView alloc] initWithContentsScale:screenScale
+                                                                       pixelFormat:pixel_format]);
 
-      auto ca_layer = fml::scoped_nsobject<CALayer>{[[overlay_view.get() layer] retain]};
+      auto ca_layer = fml::scoped_nsobject<CALayer>{[overlay_view.get() layer]};
       std::unique_ptr<IOSSurface> ios_surface = IOSSurface::Create(ios_context, ca_layer);
       std::unique_ptr<Surface> surface = ios_surface->CreateGPUSurface(gr_context);
 
@@ -161,19 +161,19 @@ FlutterPlatformViewLayerPool::GetUnusedLayers() {
 }
 
 void FlutterPlatformViewsController::SetFlutterView(UIView* flutter_view) {
-  flutter_view_.reset([flutter_view retain]);
+  flutter_view_.reset(flutter_view);
 }
 
 void FlutterPlatformViewsController::SetFlutterViewController(
-    UIViewController* flutter_view_controller) {
-  flutter_view_controller_.reset([flutter_view_controller retain]);
+    UIViewController<FlutterViewResponder>* flutter_view_controller) {
+  flutter_view_controller_.reset(flutter_view_controller);
 }
 
-UIViewController* FlutterPlatformViewsController::getFlutterViewController() {
+UIViewController<FlutterViewResponder>* FlutterPlatformViewsController::getFlutterViewController() {
   return flutter_view_controller_.get();
 }
 
-void FlutterPlatformViewsController::OnMethodCall(FlutterMethodCall* call, FlutterResult& result) {
+void FlutterPlatformViewsController::OnMethodCall(FlutterMethodCall* call, FlutterResult result) {
   if ([[call method] isEqualToString:@"create"]) {
     OnCreate(call, result);
   } else if ([[call method] isEqualToString:@"dispose"]) {
@@ -187,7 +187,7 @@ void FlutterPlatformViewsController::OnMethodCall(FlutterMethodCall* call, Flutt
   }
 }
 
-void FlutterPlatformViewsController::OnCreate(FlutterMethodCall* call, FlutterResult& result) {
+void FlutterPlatformViewsController::OnCreate(FlutterMethodCall* call, FlutterResult result) {
   NSDictionary<NSString*, id>* args = [call arguments];
 
   int64_t viewId = [args[@"id"] longLongValue];
@@ -233,26 +233,24 @@ void FlutterPlatformViewsController::OnCreate(FlutterMethodCall* call, FlutterRe
   // Set a unique view identifier, so the platform view can be identified in unit tests.
   platform_view.accessibilityIdentifier =
       [NSString stringWithFormat:@"platform_view[%lld]", viewId];
-  views_[viewId] = fml::scoped_nsobject<NSObject<FlutterPlatformView>>([embedded_view retain]);
+  views_[viewId] = fml::scoped_nsobject<NSObject<FlutterPlatformView>>(embedded_view);
 
-  FlutterTouchInterceptingView* touch_interceptor = [[[FlutterTouchInterceptingView alloc]
+  FlutterTouchInterceptingView* touch_interceptor = [[FlutterTouchInterceptingView alloc]
                   initWithEmbeddedView:platform_view
                platformViewsController:GetWeakPtr()
-      gestureRecognizersBlockingPolicy:gesture_recognizers_blocking_policies[viewType]]
-      autorelease];
+      gestureRecognizersBlockingPolicy:gesture_recognizers_blocking_policies_[viewType]];
 
   touch_interceptors_[viewId] =
-      fml::scoped_nsobject<FlutterTouchInterceptingView>([touch_interceptor retain]);
+      fml::scoped_nsobject<FlutterTouchInterceptingView>(touch_interceptor);
 
-  ChildClippingView* clipping_view =
-      [[[ChildClippingView alloc] initWithFrame:CGRectZero] autorelease];
+  ChildClippingView* clipping_view = [[ChildClippingView alloc] initWithFrame:CGRectZero];
   [clipping_view addSubview:touch_interceptor];
-  root_views_[viewId] = fml::scoped_nsobject<UIView>([clipping_view retain]);
+  root_views_[viewId] = fml::scoped_nsobject<UIView>(clipping_view);
 
   result(nil);
 }
 
-void FlutterPlatformViewsController::OnDispose(FlutterMethodCall* call, FlutterResult& result) {
+void FlutterPlatformViewsController::OnDispose(FlutterMethodCall* call, FlutterResult result) {
   NSNumber* arg = [call arguments];
   int64_t viewId = [arg longLongValue];
 
@@ -268,7 +266,7 @@ void FlutterPlatformViewsController::OnDispose(FlutterMethodCall* call, FlutterR
 }
 
 void FlutterPlatformViewsController::OnAcceptGesture(FlutterMethodCall* call,
-                                                     FlutterResult& result) {
+                                                     FlutterResult result) {
   NSDictionary<NSString*, id>* args = [call arguments];
   int64_t viewId = [args[@"id"] longLongValue];
 
@@ -286,7 +284,7 @@ void FlutterPlatformViewsController::OnAcceptGesture(FlutterMethodCall* call,
 }
 
 void FlutterPlatformViewsController::OnRejectGesture(FlutterMethodCall* call,
-                                                     FlutterResult& result) {
+                                                     FlutterResult result) {
   NSDictionary<NSString*, id>* args = [call arguments];
   int64_t viewId = [args[@"id"] longLongValue];
 
@@ -309,9 +307,8 @@ void FlutterPlatformViewsController::RegisterViewFactory(
     FlutterPlatformViewGestureRecognizersBlockingPolicy gestureRecognizerBlockingPolicy) {
   std::string idString([factoryId UTF8String]);
   FML_CHECK(factories_.count(idString) == 0);
-  factories_[idString] =
-      fml::scoped_nsobject<NSObject<FlutterPlatformViewFactory>>([factory retain]);
-  gesture_recognizers_blocking_policies[idString] = gestureRecognizerBlockingPolicy;
+  factories_[idString] = fml::scoped_nsobject<NSObject<FlutterPlatformViewFactory>>(factory);
+  gesture_recognizers_blocking_policies_[idString] = gestureRecognizerBlockingPolicy;
 }
 
 void FlutterPlatformViewsController::BeginFrame(SkISize frame_size) {
@@ -419,7 +416,7 @@ FlutterTouchInterceptingView* FlutterPlatformViewsController::GetFlutterTouchInt
 
 long FlutterPlatformViewsController::FindFirstResponderPlatformViewId() {
   for (auto const& [id, root_view] : root_views_) {
-    if ((UIView*)(root_view.get()).flt_hasFirstResponderInViewHierarchySubtree) {
+    if (((UIView*)root_view.get()).flt_hasFirstResponderInViewHierarchySubtree) {
       return id;
     }
   }
@@ -462,7 +459,7 @@ void FlutterPlatformViewsController::ApplyMutators(const MutatorsStack& mutators
   ChildClippingView* clipView = (ChildClippingView*)embedded_view.superview;
 
   SkMatrix transformMatrix;
-  NSMutableArray* blurFilters = [[[NSMutableArray alloc] init] autorelease];
+  NSMutableArray* blurFilters = [[NSMutableArray alloc] init];
   FML_DCHECK(!clipView.maskView ||
              [clipView.maskView isKindOfClass:[FlutterClippingMaskView class]]);
   if (clipView.maskView) {
@@ -532,12 +529,11 @@ void FlutterPlatformViewsController::ApplyMutators(const MutatorsStack& mutators
         // is not supported in Quartz's gaussianBlur CAFilter, so it is not used
         // to blur the PlatformView.
         CGFloat blurRadius = (*iter)->GetFilterMutation().GetFilter().asBlur()->sigma_x();
-        UIVisualEffectView* visualEffectView = [[[UIVisualEffectView alloc]
-            initWithEffect:[UIBlurEffect effectWithStyle:UIBlurEffectStyleLight]] autorelease];
-        PlatformViewFilter* filter =
-            [[[PlatformViewFilter alloc] initWithFrame:frameInClipView
-                                            blurRadius:blurRadius
-                                      visualEffectView:visualEffectView] autorelease];
+        UIVisualEffectView* visualEffectView = [[UIVisualEffectView alloc]
+            initWithEffect:[UIBlurEffect effectWithStyle:UIBlurEffectStyleLight]];
+        PlatformViewFilter* filter = [[PlatformViewFilter alloc] initWithFrame:frameInClipView
+                                                                    blurRadius:blurRadius
+                                                              visualEffectView:visualEffectView];
         if (!filter) {
           canApplyBlurBackdrop = NO;
         } else {
@@ -681,7 +677,7 @@ bool FlutterPlatformViewsController::SubmitFrame(GrDirectContext* gr_context,
 
   // Clipping the background canvas before drawing the picture recorders requires
   // saving and restoring the clip context.
-  DlAutoCanvasRestore save(background_canvas, /*doSave=*/true);
+  DlAutoCanvasRestore save(background_canvas, /*do_save=*/true);
 
   // Maps a platform view id to a vector of `FlutterPlatformViewLayer`.
   LayersMap platform_view_layers;
@@ -689,6 +685,8 @@ bool FlutterPlatformViewsController::SubmitFrame(GrDirectContext* gr_context,
   auto did_submit = true;
   auto num_platform_views = composition_order_.size();
 
+  // TODO(hellohuanlin) this double for-loop is expensive with wasted computations.
+  // See: https://github.com/flutter/flutter/issues/145802
   for (size_t i = 0; i < num_platform_views; i++) {
     int64_t platform_view_id = composition_order_[i];
     EmbedderViewSlice* slice = slices_[platform_view_id].get();
@@ -699,8 +697,28 @@ bool FlutterPlatformViewsController::SubmitFrame(GrDirectContext* gr_context,
     for (size_t j = i + 1; j > 0; j--) {
       int64_t current_platform_view_id = composition_order_[j - 1];
       SkRect platform_view_rect = GetPlatformViewRect(current_platform_view_id);
-      std::list<SkRect> intersection_rects =
-          slice->searchNonOverlappingDrawnRects(platform_view_rect);
+      std::vector<SkIRect> intersection_rects = slice->region(platform_view_rect).getRects();
+      const SkIRect rounded_in_platform_view_rect = platform_view_rect.roundIn();
+      // Ignore intersections of single width/height on the edge of the platform view.
+      // This is to address the following performance issue when interleaving adjacent
+      // platform views and layers:
+      // Since we `roundOut` both platform view rects and the layer rects, as long as
+      // the coordinate is fractional, there will be an intersection of a single pixel width
+      // (or height) after rounding out, even if they do not intersect before rounding out.
+      // We have to round out both platform view rect and the layer rect.
+      // Rounding in platform view rect will result in missing pixel on the intersection edge.
+      // Rounding in layer rect will result in missing pixel on the edge of the layer on top
+      // of the platform view.
+      for (auto it = intersection_rects.begin(); it != intersection_rects.end(); /*no-op*/) {
+        // If intersection_rect does not intersect with the *rounded in* platform
+        // view rect, then the intersection must be a single pixel width (or height) on edge.
+        if (!SkIRect::Intersects(*it, rounded_in_platform_view_rect)) {
+          it = intersection_rects.erase(it);
+        } else {
+          ++it;
+        }
+      }
+
       auto allocation_size = intersection_rects.size();
 
       // For testing purposes, the overlay id is used to find the overlay view.
@@ -713,8 +731,8 @@ bool FlutterPlatformViewsController::SubmitFrame(GrDirectContext* gr_context,
       // TODO(egarciad): Consider making this configurable.
       // https://github.com/flutter/flutter/issues/52510
       if (allocation_size > kMaxLayerAllocations) {
-        SkRect joined_rect = SkRect::MakeEmpty();
-        for (const SkRect& rect : intersection_rects) {
+        SkIRect joined_rect = SkIRect::MakeEmpty();
+        for (const SkIRect& rect : intersection_rects) {
           joined_rect.join(rect);
         }
         // Replace the rects in the intersection rects list for a single rect that is
@@ -722,26 +740,23 @@ bool FlutterPlatformViewsController::SubmitFrame(GrDirectContext* gr_context,
         intersection_rects.clear();
         intersection_rects.push_back(joined_rect);
       }
-      for (SkRect& joined_rect : intersection_rects) {
+      for (SkIRect& joined_rect : intersection_rects) {
         // Get the intersection rect between the current rect
         // and the platform view rect.
-        joined_rect.intersect(platform_view_rect);
-        // Subpixels in the platform may not align with the canvas subpixels.
-        // To workaround it, round the floating point bounds and make the rect slightly larger.
-        // For example, {0.3, 0.5, 3.1, 4.7} becomes {0, 0, 4, 5}.
-        joined_rect.setLTRB(std::floor(joined_rect.left()), std::floor(joined_rect.top()),
-                            std::ceil(joined_rect.right()), std::ceil(joined_rect.bottom()));
+        joined_rect.intersect(platform_view_rect.roundOut());
         // Clip the background canvas, so it doesn't contain any of the pixels drawn
         // on the overlay layer.
-        background_canvas->ClipRect(joined_rect, DlCanvas::ClipOp::kDifference);
+        background_canvas->ClipRect(SkRect::Make(joined_rect), DlCanvas::ClipOp::kDifference);
         // Get a new host layer.
-        std::shared_ptr<FlutterPlatformViewLayer> layer = GetLayer(gr_context,                //
-                                                                   ios_context,               //
-                                                                   slice,                     //
-                                                                   joined_rect,               //
-                                                                   current_platform_view_id,  //
-                                                                   overlay_id                 //
-        );
+        std::shared_ptr<FlutterPlatformViewLayer> layer =
+            GetLayer(gr_context,                                      //
+                     ios_context,                                     //
+                     slice,                                           //
+                     joined_rect,                                     //
+                     current_platform_view_id,                        //
+                     overlay_id,                                      //
+                     ((FlutterView*)flutter_view_.get()).pixelFormat  //
+            );
         did_submit &= layer->did_submit_last_frame;
         platform_view_layers[current_platform_view_id].push_back(layer);
         overlay_id++;
@@ -809,11 +824,13 @@ std::shared_ptr<FlutterPlatformViewLayer> FlutterPlatformViewsController::GetLay
     GrDirectContext* gr_context,
     const std::shared_ptr<IOSContext>& ios_context,
     EmbedderViewSlice* slice,
-    SkRect rect,
+    SkIRect rect,
     int64_t view_id,
-    int64_t overlay_id) {
+    int64_t overlay_id,
+    MTLPixelFormat pixel_format) {
   FML_DCHECK(flutter_view_);
-  std::shared_ptr<FlutterPlatformViewLayer> layer = layer_pool_->GetLayer(gr_context, ios_context);
+  std::shared_ptr<FlutterPlatformViewLayer> layer =
+      layer_pool_->GetLayer(gr_context, ios_context, pixel_format);
 
   UIView* overlay_view_wrapper = layer->overlay_view_wrapper.get();
   auto screenScale = [UIScreen mainScreen].scale;
@@ -842,7 +859,7 @@ std::shared_ptr<FlutterPlatformViewLayer> FlutterPlatformViewsController::GetLay
   DlCanvas* overlay_canvas = frame->Canvas();
   int restore_count = overlay_canvas->GetSaveCount();
   overlay_canvas->Save();
-  overlay_canvas->ClipRect(rect);
+  overlay_canvas->ClipRect(SkRect::Make(rect));
   overlay_canvas->Clear(DlColor::kTransparent());
   slice->render_into(overlay_canvas);
   overlay_canvas->RestoreToCount(restore_count);
@@ -931,11 +948,13 @@ void FlutterPlatformViewsController::ResetFrameState() {
 
 // Indicates that if the `DelayingGestureRecognizer`'s state should be set to
 // `UIGestureRecognizerStateEnded` during next `touchesEnded` call.
-@property(nonatomic) bool shouldEndInNextTouchesEnded;
+@property(nonatomic) BOOL shouldEndInNextTouchesEnded;
 
 // Indicates that the `DelayingGestureRecognizer`'s `touchesEnded` has been invoked without
 // setting the state to `UIGestureRecognizerStateEnded`.
-@property(nonatomic) bool touchedEndedWithoutBlocking;
+@property(nonatomic) BOOL touchedEndedWithoutBlocking;
+
+@property(nonatomic, readonly) UIGestureRecognizer* forwardingRecognizer;
 
 - (instancetype)initWithTarget:(id)target
                         action:(SEL)action
@@ -958,15 +977,13 @@ void FlutterPlatformViewsController::ResetFrameState() {
            (fml::WeakPtr<flutter::FlutterPlatformViewsController>)platformViewsController;
 @end
 
-@implementation FlutterTouchInterceptingView {
-  fml::scoped_nsobject<DelayingGestureRecognizer> _delayingRecognizer;
-  FlutterPlatformViewGestureRecognizersBlockingPolicy _blockingPolicy;
-  UIView* _embeddedView;
-  // The used as the accessiblityContainer.
-  // The `accessiblityContainer` is used in UIKit to determine the parent of this accessibility
-  // node.
-  NSObject* _flutterAccessibilityContainer;
-}
+@interface FlutterTouchInterceptingView ()
+@property(nonatomic, weak, readonly) UIView* embeddedView;
+@property(nonatomic, readonly) DelayingGestureRecognizer* delayingRecognizer;
+@property(nonatomic, readonly) FlutterPlatformViewGestureRecognizersBlockingPolicy blockingPolicy;
+@end
+
+@implementation FlutterTouchInterceptingView
 - (instancetype)initWithEmbeddedView:(UIView*)embeddedView
              platformViewsController:
                  (fml::WeakPtr<flutter::FlutterPlatformViewsController>)platformViewsController
@@ -981,47 +998,42 @@ void FlutterPlatformViewsController::ResetFrameState() {
 
     [self addSubview:embeddedView];
 
-    ForwardingGestureRecognizer* forwardingRecognizer = [[[ForwardingGestureRecognizer alloc]
-                 initWithTarget:self
-        platformViewsController:std::move(platformViewsController)] autorelease];
+    ForwardingGestureRecognizer* forwardingRecognizer =
+        [[ForwardingGestureRecognizer alloc] initWithTarget:self
+                                    platformViewsController:platformViewsController];
 
-    _delayingRecognizer.reset([[DelayingGestureRecognizer alloc]
-              initWithTarget:self
-                      action:nil
-        forwardingRecognizer:forwardingRecognizer]);
+    _delayingRecognizer = [[DelayingGestureRecognizer alloc] initWithTarget:self
+                                                                     action:nil
+                                                       forwardingRecognizer:forwardingRecognizer];
     _blockingPolicy = blockingPolicy;
 
-    [self addGestureRecognizer:_delayingRecognizer.get()];
+    [self addGestureRecognizer:_delayingRecognizer];
     [self addGestureRecognizer:forwardingRecognizer];
   }
   return self;
 }
 
-- (UIView*)embeddedView {
-  return [[_embeddedView retain] autorelease];
-}
-
 - (void)releaseGesture {
-  _delayingRecognizer.get().state = UIGestureRecognizerStateFailed;
+  self.delayingRecognizer.state = UIGestureRecognizerStateFailed;
 }
 
 - (void)blockGesture {
   switch (_blockingPolicy) {
     case FlutterPlatformViewGestureRecognizersBlockingPolicyEager:
       // We block all other gesture recognizers immediately in this policy.
-      _delayingRecognizer.get().state = UIGestureRecognizerStateEnded;
+      self.delayingRecognizer.state = UIGestureRecognizerStateEnded;
       break;
     case FlutterPlatformViewGestureRecognizersBlockingPolicyWaitUntilTouchesEnded:
-      if (_delayingRecognizer.get().touchedEndedWithoutBlocking) {
+      if (self.delayingRecognizer.touchedEndedWithoutBlocking) {
         // If touchesEnded of the `DelayingGesureRecognizer` has been already invoked,
         // we want to set the state of the `DelayingGesureRecognizer` to
         // `UIGestureRecognizerStateEnded` as soon as possible.
-        _delayingRecognizer.get().state = UIGestureRecognizerStateEnded;
+        self.delayingRecognizer.state = UIGestureRecognizerStateEnded;
       } else {
         // If touchesEnded of the `DelayingGesureRecognizer` has not been invoked,
         // We will set a flag to notify the `DelayingGesureRecognizer` to set the state to
         // `UIGestureRecognizerStateEnded` when touchesEnded is called.
-        _delayingRecognizer.get().shouldEndInNextTouchesEnded = YES;
+        self.delayingRecognizer.shouldEndInNextTouchesEnded = YES;
       }
       break;
     default:
@@ -1044,19 +1056,13 @@ void FlutterPlatformViewsController::ResetFrameState() {
 - (void)touchesEnded:(NSSet*)touches withEvent:(UIEvent*)event {
 }
 
-- (void)setFlutterAccessibilityContainer:(NSObject*)flutterAccessibilityContainer {
-  _flutterAccessibilityContainer = flutterAccessibilityContainer;
-}
-
 - (id)accessibilityContainer {
-  return _flutterAccessibilityContainer;
+  return self.flutterAccessibilityContainer;
 }
 
 @end
 
-@implementation DelayingGestureRecognizer {
-  fml::scoped_nsobject<UIGestureRecognizer> _forwardingRecognizer;
-}
+@implementation DelayingGestureRecognizer
 
 - (instancetype)initWithTarget:(id)target
                         action:(SEL)action
@@ -1066,9 +1072,9 @@ void FlutterPlatformViewsController::ResetFrameState() {
     self.delaysTouchesBegan = YES;
     self.delaysTouchesEnded = YES;
     self.delegate = self;
-    self.shouldEndInNextTouchesEnded = NO;
-    self.touchedEndedWithoutBlocking = NO;
-    _forwardingRecognizer.reset([forwardingRecognizer retain]);
+    _shouldEndInNextTouchesEnded = NO;
+    _touchedEndedWithoutBlocking = NO;
+    _forwardingRecognizer = forwardingRecognizer;
   }
   return self;
 }
@@ -1077,7 +1083,7 @@ void FlutterPlatformViewsController::ResetFrameState() {
     shouldBeRequiredToFailByGestureRecognizer:(UIGestureRecognizer*)otherGestureRecognizer {
   // The forwarding gesture recognizer should always get all touch events, so it should not be
   // required to fail by any other gesture recognizer.
-  return otherGestureRecognizer != _forwardingRecognizer.get() && otherGestureRecognizer != self;
+  return otherGestureRecognizer != _forwardingRecognizer && otherGestureRecognizer != self;
 }
 
 - (BOOL)gestureRecognizer:(UIGestureRecognizer*)gestureRecognizer
@@ -1120,7 +1126,7 @@ void FlutterPlatformViewsController::ResetFrameState() {
   // This gesture recognizer retains the `FlutterViewController` until the
   // end of a gesture sequence, that is all the touches in touchesBegan are concluded
   // with |touchesCancelled| or |touchesEnded|.
-  fml::scoped_nsobject<UIViewController> _flutterViewController;
+  fml::scoped_nsobject<UIViewController<FlutterViewResponder>> _flutterViewController;
 }
 
 - (instancetype)initWithTarget:(id)target
@@ -1142,7 +1148,7 @@ void FlutterPlatformViewsController::ResetFrameState() {
     // At the start of each gesture sequence, we reset the `_flutterViewController`,
     // so that all the touch events in the same sequence are forwarded to the same
     // `_flutterViewController`.
-    _flutterViewController.reset([_platformViewsController->getFlutterViewController() retain]);
+    _flutterViewController.reset(_platformViewsController->getFlutterViewController());
   }
   [_flutterViewController.get() touchesBegan:touches withEvent:event];
   _currentTouchPointersCount += touches.count;
@@ -1171,7 +1177,7 @@ void FlutterPlatformViewsController::ResetFrameState() {
   // Flutter needs all the cancelled touches to be "cancelled" change types in order to correctly
   // handle gesture sequence.
   // We always override the change type to "cancelled".
-  [((FlutterViewController*)_flutterViewController.get()) forceTouchesCancelled:touches];
+  [_flutterViewController.get() forceTouchesCancelled:touches];
   _currentTouchPointersCount -= touches.count;
   if (_currentTouchPointersCount == 0) {
     self.state = UIGestureRecognizerStateFailed;

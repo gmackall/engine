@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 #include "impeller/renderer/capabilities.h"
+#include "impeller/core/formats.h"
 
 namespace impeller {
 
@@ -21,12 +22,10 @@ class StandardCapabilities final : public Capabilities {
   }
 
   // |Capabilities|
-  bool SupportsSSBO() const override { return supports_ssbo_; }
+  bool SupportsImplicitResolvingMSAA() const override { return false; }
 
   // |Capabilities|
-  bool SupportsBufferToTextureBlits() const override {
-    return supports_buffer_to_texture_blits_;
-  }
+  bool SupportsSSBO() const override { return supports_ssbo_; }
 
   // |Capabilities|
   bool SupportsTextureToTextureBlits() const override {
@@ -44,11 +43,6 @@ class StandardCapabilities final : public Capabilities {
   // |Capabilities|
   bool SupportsComputeSubgroups() const override {
     return supports_compute_subgroups_;
-  }
-
-  // |Capabilities|
-  bool SupportsReadFromOnscreenTexture() const override {
-    return supports_read_from_onscreen_texture_;
   }
 
   // |Capabilities|
@@ -76,60 +70,64 @@ class StandardCapabilities final : public Capabilities {
     return default_depth_stencil_format_;
   }
 
+  // |Capabilities|
   bool SupportsDeviceTransientTextures() const override {
     return supports_device_transient_textures_;
+  }
+
+  // |Capabilities|
+  PixelFormat GetDefaultGlyphAtlasFormat() const override {
+    return default_glyph_atlas_format_;
   }
 
  private:
   StandardCapabilities(bool supports_offscreen_msaa,
                        bool supports_ssbo,
-                       bool supports_buffer_to_texture_blits,
                        bool supports_texture_to_texture_blits,
                        bool supports_framebuffer_fetch,
                        bool supports_compute,
                        bool supports_compute_subgroups,
-                       bool supports_read_from_onscreen_texture,
                        bool supports_read_from_resolve,
                        bool supports_decal_sampler_address_mode,
                        bool supports_device_transient_textures,
                        PixelFormat default_color_format,
                        PixelFormat default_stencil_format,
-                       PixelFormat default_depth_stencil_format)
+                       PixelFormat default_depth_stencil_format,
+                       PixelFormat default_glyph_atlas_format)
       : supports_offscreen_msaa_(supports_offscreen_msaa),
         supports_ssbo_(supports_ssbo),
-        supports_buffer_to_texture_blits_(supports_buffer_to_texture_blits),
         supports_texture_to_texture_blits_(supports_texture_to_texture_blits),
         supports_framebuffer_fetch_(supports_framebuffer_fetch),
         supports_compute_(supports_compute),
         supports_compute_subgroups_(supports_compute_subgroups),
-        supports_read_from_onscreen_texture_(
-            supports_read_from_onscreen_texture),
         supports_read_from_resolve_(supports_read_from_resolve),
         supports_decal_sampler_address_mode_(
             supports_decal_sampler_address_mode),
         supports_device_transient_textures_(supports_device_transient_textures),
         default_color_format_(default_color_format),
         default_stencil_format_(default_stencil_format),
-        default_depth_stencil_format_(default_depth_stencil_format) {}
+        default_depth_stencil_format_(default_depth_stencil_format),
+        default_glyph_atlas_format_(default_glyph_atlas_format) {}
 
   friend class CapabilitiesBuilder;
 
   bool supports_offscreen_msaa_ = false;
   bool supports_ssbo_ = false;
-  bool supports_buffer_to_texture_blits_ = false;
   bool supports_texture_to_texture_blits_ = false;
   bool supports_framebuffer_fetch_ = false;
   bool supports_compute_ = false;
   bool supports_compute_subgroups_ = false;
-  bool supports_read_from_onscreen_texture_ = false;
   bool supports_read_from_resolve_ = false;
   bool supports_decal_sampler_address_mode_ = false;
   bool supports_device_transient_textures_ = false;
   PixelFormat default_color_format_ = PixelFormat::kUnknown;
   PixelFormat default_stencil_format_ = PixelFormat::kUnknown;
   PixelFormat default_depth_stencil_format_ = PixelFormat::kUnknown;
+  PixelFormat default_glyph_atlas_format_ = PixelFormat::kUnknown;
 
-  FML_DISALLOW_COPY_AND_ASSIGN(StandardCapabilities);
+  StandardCapabilities(const StandardCapabilities&) = delete;
+
+  StandardCapabilities& operator=(const StandardCapabilities&) = delete;
 };
 
 CapabilitiesBuilder::CapabilitiesBuilder() = default;
@@ -143,12 +141,6 @@ CapabilitiesBuilder& CapabilitiesBuilder::SetSupportsOffscreenMSAA(bool value) {
 
 CapabilitiesBuilder& CapabilitiesBuilder::SetSupportsSSBO(bool value) {
   supports_ssbo_ = value;
-  return *this;
-}
-
-CapabilitiesBuilder& CapabilitiesBuilder::SetSupportsBufferToTextureBlits(
-    bool value) {
-  supports_buffer_to_texture_blits_ = value;
   return *this;
 }
 
@@ -175,18 +167,6 @@ CapabilitiesBuilder& CapabilitiesBuilder::SetSupportsComputeSubgroups(
   return *this;
 }
 
-CapabilitiesBuilder& CapabilitiesBuilder::SetSupportsReadFromOnscreenTexture(
-    bool read_from_onscreen_texture) {
-  supports_read_from_onscreen_texture_ = read_from_onscreen_texture;
-  return *this;
-}
-
-CapabilitiesBuilder& CapabilitiesBuilder::SetSupportsReadFromResolve(
-    bool read_from_resolve) {
-  supports_read_from_resolve_ = read_from_resolve;
-  return *this;
-}
-
 CapabilitiesBuilder& CapabilitiesBuilder::SetDefaultColorFormat(
     PixelFormat value) {
   default_color_format_ = value;
@@ -205,6 +185,12 @@ CapabilitiesBuilder& CapabilitiesBuilder::SetDefaultDepthStencilFormat(
   return *this;
 }
 
+CapabilitiesBuilder& CapabilitiesBuilder::SetSupportsReadFromResolve(
+    bool read_from_resolve) {
+  supports_read_from_resolve_ = read_from_resolve;
+  return *this;
+}
+
 CapabilitiesBuilder& CapabilitiesBuilder::SetSupportsDecalSamplerAddressMode(
     bool value) {
   supports_decal_sampler_address_mode_ = value;
@@ -217,22 +203,27 @@ CapabilitiesBuilder& CapabilitiesBuilder::SetSupportsDeviceTransientTextures(
   return *this;
 }
 
+CapabilitiesBuilder& CapabilitiesBuilder::SetDefaultGlyphAtlasFormat(
+    PixelFormat value) {
+  default_glyph_atlas_format_ = value;
+  return *this;
+}
+
 std::unique_ptr<Capabilities> CapabilitiesBuilder::Build() {
   return std::unique_ptr<StandardCapabilities>(new StandardCapabilities(  //
       supports_offscreen_msaa_,                                           //
       supports_ssbo_,                                                     //
-      supports_buffer_to_texture_blits_,                                  //
       supports_texture_to_texture_blits_,                                 //
       supports_framebuffer_fetch_,                                        //
       supports_compute_,                                                  //
       supports_compute_subgroups_,                                        //
-      supports_read_from_onscreen_texture_,                               //
       supports_read_from_resolve_,                                        //
       supports_decal_sampler_address_mode_,                               //
       supports_device_transient_textures_,                                //
       default_color_format_.value_or(PixelFormat::kUnknown),              //
       default_stencil_format_.value_or(PixelFormat::kUnknown),            //
-      default_depth_stencil_format_.value_or(PixelFormat::kUnknown)       //
+      default_depth_stencil_format_.value_or(PixelFormat::kUnknown),      //
+      default_glyph_atlas_format_.value_or(PixelFormat::kUnknown)         //
       ));
 }
 

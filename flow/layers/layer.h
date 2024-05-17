@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "flutter/common/graphics/texture.h"
+#include "flutter/common/macros.h"
 #include "flutter/display_list/dl_canvas.h"
 #include "flutter/flow/diff_context.h"
 #include "flutter/flow/embedded_views.h"
@@ -49,14 +50,14 @@ class RasterCacheItem;
 static constexpr SkRect kGiantRect = SkRect::MakeLTRB(-1E9F, -1E9F, 1E9F, 1E9F);
 
 // This should be an exact copy of the Clip enum in painting.dart.
-enum Clip { none, hardEdge, antiAlias, antiAliasWithSaveLayer };
+enum Clip { kNone, kHardEdge, kAntiAlias, kAntiAliasWithSaveLayer };
 
 struct PrerollContext {
-  RasterCache* raster_cache;
+  NOT_SLIMPELLER(RasterCache* raster_cache);
   GrDirectContext* gr_context;
   ExternalViewEmbedder* view_embedder;
   LayerStateStack& state_stack;
-  SkColorSpace* dst_color_space;
+  sk_sp<SkColorSpace> dst_color_space;
   bool surface_needs_readback;
 
   // These allow us to paint in the end of subtree Preroll.
@@ -106,12 +107,12 @@ struct PaintContext {
   bool rendering_above_platform_view = false;
 
   GrDirectContext* gr_context;
-  SkColorSpace* dst_color_space;
+  sk_sp<SkColorSpace> dst_color_space;
   ExternalViewEmbedder* view_embedder;
   const Stopwatch& raster_time;
   const Stopwatch& ui_time;
   std::shared_ptr<TextureRegistry> texture_registry;
-  const RasterCache* raster_cache;
+  NOT_SLIMPELLER(const RasterCache* raster_cache);
 
   // Snapshot store to collect leaf layer snapshots. The store is non-null
   // only when leaf layer tracing is enabled.
@@ -249,9 +250,11 @@ class Layer {
 
   uint64_t unique_id() const { return unique_id_; }
 
+#if !SLIMPELLER
   virtual RasterCacheKeyID caching_key_id() const {
     return RasterCacheKeyID(unique_id_, RasterCacheKeyType::kLayer);
   }
+#endif  //  !SLIMPELLER
   virtual const ContainerLayer* as_container_layer() const { return nullptr; }
   virtual const DisplayListLayer* as_display_list_layer() const {
     return nullptr;
@@ -266,7 +269,7 @@ class Layer {
   SkRect paint_bounds_;
   uint64_t unique_id_;
   uint64_t original_layer_id_;
-  bool subtree_has_platform_view_;
+  bool subtree_has_platform_view_ = false;
 
   static uint64_t NextUniqueID();
 

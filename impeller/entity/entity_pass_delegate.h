@@ -2,11 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#pragma once
+#ifndef FLUTTER_IMPELLER_ENTITY_ENTITY_PASS_DELEGATE_H_
+#define FLUTTER_IMPELLER_ENTITY_ENTITY_PASS_DELEGATE_H_
 
 #include <memory>
 
-#include "flutter/fml/macros.h"
 #include "impeller/core/texture.h"
 #include "impeller/entity/contents/contents.h"
 #include "impeller/entity/contents/filters/filter_contents.h"
@@ -39,7 +39,11 @@ class EntityPassDelegate {
       const Matrix& effect_transform) const = 0;
 
  private:
-  FML_DISALLOW_COPY_AND_ASSIGN(EntityPassDelegate);
+  EntityPassDelegate(const EntityPassDelegate&) = delete;
+
+  EntityPassDelegate& operator=(const EntityPassDelegate&) = delete;
 };
 
 }  // namespace impeller
+
+#endif  // FLUTTER_IMPELLER_ENTITY_ENTITY_PASS_DELEGATE_H_

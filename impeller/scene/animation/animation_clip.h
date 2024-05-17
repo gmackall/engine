@@ -2,13 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#pragma once
+#ifndef FLUTTER_IMPELLER_SCENE_ANIMATION_ANIMATION_CLIP_H_
+#define FLUTTER_IMPELLER_SCENE_ANIMATION_ANIMATION_CLIP_H_
 
 #include <memory>
 #include <unordered_map>
 #include <vector>
 
-#include "flutter/fml/macros.h"
 #include "impeller/scene/animation/animation.h"
 #include "impeller/scene/animation/animation_transforms.h"
 
@@ -83,10 +83,14 @@ class AnimationClip final {
   bool playing_ = false;
   bool loop_ = false;
 
-  FML_DISALLOW_COPY_AND_ASSIGN(AnimationClip);
+  AnimationClip(const AnimationClip&) = delete;
+
+  AnimationClip& operator=(const AnimationClip&) = delete;
 
   friend AnimationPlayer;
 };
 
 }  // namespace scene
 }  // namespace impeller
+
+#endif  // FLUTTER_IMPELLER_SCENE_ANIMATION_ANIMATION_CLIP_H_

@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#if !SLIMPELLER
+
 #include "flutter/display_list/skia/dl_sk_canvas.h"
 
 #include "flutter/display_list/skia/dl_sk_conversions.h"
@@ -16,9 +18,10 @@ namespace flutter {
 
 class SkOptionalPaint {
  public:
+  // SkOptionalPaint is only valid for ops that do not use the ColorSource
   explicit SkOptionalPaint(const DlPaint* dl_paint) {
     if (dl_paint && !dl_paint->isDefault()) {
-      sk_paint_ = ToSk(*dl_paint);
+      sk_paint_ = ToNonShaderSk(*dl_paint);
       ptr_ = &sk_paint_;
     } else {
       ptr_ = nullptr;
@@ -193,7 +196,7 @@ void DlSkCanvasAdapter::DrawColor(DlColor color, DlBlendMode mode) {
 void DlSkCanvasAdapter::DrawLine(const SkPoint& p0,
                                  const SkPoint& p1,
                                  const DlPaint& paint) {
-  delegate_->drawLine(p0, p1, ToSk(paint, true));
+  delegate_->drawLine(p0, p1, ToStrokedSk(paint));
 }
 
 void DlSkCanvasAdapter::DrawRect(const SkRect& rect, const DlPaint& paint) {
@@ -236,7 +239,7 @@ void DlSkCanvasAdapter::DrawPoints(PointMode mode,
                                    uint32_t count,
                                    const SkPoint pts[],
                                    const DlPaint& paint) {
-  delegate_->drawPoints(ToSk(mode), count, pts, ToSk(paint, true));
+  delegate_->drawPoints(ToSk(mode), count, pts, ToStrokedSk(paint));
 }
 
 void DlSkCanvasAdapter::DrawVertices(const DlVertices* vertices,
@@ -351,3 +354,5 @@ void DlSkCanvasAdapter::Flush() {
 }
 
 }  // namespace flutter
+
+#endif  //  !SLIMPELLER

@@ -127,11 +127,11 @@ static void TestSimulatedInputEvents(
         ShellTest::DispatchFakePointerData(shell.get());
         i += 1;
       }
-      ShellTest::VSyncFlush(shell.get(), will_draw_new_frame);
+      ShellTest::VSyncFlush(shell.get(), &will_draw_new_frame);
     }
     // Finally, issue a vsync for the pending event that may be generated duing
     // the last vsync.
-    ShellTest::VSyncFlush(shell.get(), will_draw_new_frame);
+    ShellTest::VSyncFlush(shell.get(), &will_draw_new_frame);
   });
 
   simulation.wait();
@@ -146,6 +146,7 @@ static void TestSimulatedInputEvents(
 
   // Make sure that all events have been consumed so
   // https://github.com/flutter/flutter/issues/40863 won't happen again.
+  ASSERT_GT(events_consumed_at_frame.size(), 0u);
   ASSERT_EQ(events_consumed_at_frame.back(), num_events);
 }
 
@@ -345,8 +346,7 @@ TEST_F(ShellTest, CanCorrectlyPipePointerPacket) {
   CreateSimulatedPointerData(data, PointerData::Change::kRemove, 3.0, 4.0);
   packet->SetPointerData(5, data);
   ShellTest::DispatchPointerData(shell.get(), std::move(packet));
-  bool will_draw_new_frame;
-  ShellTest::VSyncFlush(shell.get(), will_draw_new_frame);
+  ShellTest::VSyncFlush(shell.get());
 
   reportLatch.Wait();
   size_t expect_length = 6;
@@ -407,8 +407,7 @@ TEST_F(ShellTest, CanCorrectlySynthesizePointerPacket) {
   CreateSimulatedPointerData(data, PointerData::Change::kRemove, 3.0, 4.0);
   packet->SetPointerData(3, data);
   ShellTest::DispatchPointerData(shell.get(), std::move(packet));
-  bool will_draw_new_frame;
-  ShellTest::VSyncFlush(shell.get(), will_draw_new_frame);
+  ShellTest::VSyncFlush(shell.get());
 
   reportLatch.Wait();
   size_t expect_length = 6;

@@ -2,17 +2,15 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#pragma once
+#ifndef FLUTTER_IMPELLER_AIKS_PAINT_PASS_DELEGATE_H_
+#define FLUTTER_IMPELLER_AIKS_PAINT_PASS_DELEGATE_H_
 
 #include <optional>
 
-#include "flutter/fml/macros.h"
 #include "impeller/aiks/paint.h"
 #include "impeller/entity/entity_pass_delegate.h"
 
 namespace impeller {
-
-class EntityPass;
 
 class PaintPassDelegate final : public EntityPassDelegate {
  public:
@@ -40,7 +38,9 @@ class PaintPassDelegate final : public EntityPassDelegate {
  private:
   const Paint paint_;
 
-  FML_DISALLOW_COPY_AND_ASSIGN(PaintPassDelegate);
+  PaintPassDelegate(const PaintPassDelegate&) = delete;
+
+  PaintPassDelegate& operator=(const PaintPassDelegate&) = delete;
 };
 
 /// A delegate that attempts to forward opacity from a save layer to
@@ -74,7 +74,12 @@ class OpacityPeepholePassDelegate final : public EntityPassDelegate {
  private:
   const Paint paint_;
 
-  FML_DISALLOW_COPY_AND_ASSIGN(OpacityPeepholePassDelegate);
+  OpacityPeepholePassDelegate(const OpacityPeepholePassDelegate&) = delete;
+
+  OpacityPeepholePassDelegate& operator=(const OpacityPeepholePassDelegate&) =
+      delete;
 };
 
 }  // namespace impeller
+
+#endif  // FLUTTER_IMPELLER_AIKS_PAINT_PASS_DELEGATE_H_

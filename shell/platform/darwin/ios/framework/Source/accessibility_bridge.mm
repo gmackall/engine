@@ -9,7 +9,7 @@
 #include "flutter/fml/logging.h"
 #import "flutter/shell/platform/darwin/ios/framework/Source/FlutterEngine_Internal.h"
 #import "flutter/shell/platform/darwin/ios/framework/Source/FlutterViewController_Internal.h"
-#import "flutter/shell/platform/darwin/ios/framework/Source/accessibility_text_entry.h"
+#import "flutter/shell/platform/darwin/ios/framework/Source/TextInputSemanticsObject.h"
 #import "flutter/shell/platform/darwin/ios/platform_view_ios.h"
 
 #pragma GCC diagnostic error "-Wundeclared-selector"
@@ -49,7 +49,6 @@ AccessibilityBridge::AccessibilityBridge(
       platform_views_controller_(std::move(platform_views_controller)),
       last_focused_semantics_object_id_(kSemanticObjectIdInvalid),
       objects_([[NSMutableDictionary alloc] init]),
-      previous_route_id_(0),
       previous_routes_({}),
       ios_delegate_(ios_delegate ? std::move(ios_delegate)
                                  : std::make_unique<DefaultIosDelegate>()),
@@ -75,6 +74,7 @@ UIView<UITextInput>* AccessibilityBridge::textInputView() {
 
 void AccessibilityBridge::AccessibilityObjectDidBecomeFocused(int32_t id) {
   last_focused_semantics_object_id_ = id;
+  [accessibility_channel_.get() sendMessage:@{@"type" : @"didGainFocus", @"nodeId" : @(id)}];
 }
 
 void AccessibilityBridge::AccessibilityObjectDidLoseFocus(int32_t id) {

@@ -6,8 +6,8 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:ui/ui.dart' as ui;
+import 'package:ui/ui_web/src/ui_web.dart' as ui_web;
 
-import '../browser_detection.dart';
 import '../canvas_pool.dart';
 import '../display.dart';
 import '../dom.dart';
@@ -17,7 +17,6 @@ import '../html_image_codec.dart';
 import '../text/canvas_paragraph.dart';
 import '../util.dart';
 import '../vector_math.dart';
-import '../window.dart';
 import 'clip.dart';
 import 'color_filter.dart';
 import 'dom_canvas.dart';
@@ -573,7 +572,7 @@ class BitmapCanvas extends EngineCanvas {
       final bool isStroke = paint.style == ui.PaintingStyle.stroke;
       final String cssColor = colorValueToCssString(paint.color);
       final double sigma = paint.maskFilter!.webOnlySigma;
-      if (browserEngine == BrowserEngine.webkit && !isStroke) {
+      if (ui_web.browser.browserEngine == ui_web.BrowserEngine.webkit && !isStroke) {
         // A bug in webkit leaves artifacts when this element is animated
         // with filter: blur, we use boxShadow instead.
         element.style.boxShadow = '0px 0px ${sigma * 2.0}px $cssColor';
@@ -1036,7 +1035,7 @@ class BitmapCanvas extends EngineCanvas {
     _drawPointsPaint.color = paint.color;
     _drawPointsPaint.maskFilter = paint.maskFilter;
 
-    final double dpr = ui.window.devicePixelRatio;
+    final double dpr = EngineFlutterDisplay.instance.devicePixelRatio;
     // Use hairline (device pixel when strokeWidth is not specified).
     final double strokeWidth =
         paint.strokeWidth == null ? 1.0 / dpr : paint.strokeWidth!;
@@ -1051,7 +1050,7 @@ class BitmapCanvas extends EngineCanvas {
   void endOfPaint() {
     _canvasPool.endOfPaint();
     _elementCache?.commitFrame();
-    if (_contains3dTransform && browserEngine == BrowserEngine.webkit) {
+    if (_contains3dTransform && ui_web.browser.browserEngine == ui_web.BrowserEngine.webkit) {
       // Copy the children list to avoid concurrent modification.
       final List<DomElement> children = rootElement.children.toList();
       for (final DomElement element in children) {
@@ -1077,7 +1076,7 @@ class BitmapCanvas extends EngineCanvas {
   /// viewport.
   ui.Rect _computeScreenBounds(Matrix4 targetTransform) {
     final Matrix4 inverted = targetTransform.clone()..invert();
-    final double dpr = ui.window.devicePixelRatio;
+    final double dpr = EngineFlutterDisplay.instance.devicePixelRatio;
     final double width = ui.window.physicalSize.width * dpr;
     final double height = ui.window.physicalSize.height * dpr;
     final Vector3 topLeft = inverted.perspectiveTransform(x: 0, y: 0, z: 0);
@@ -1451,13 +1450,13 @@ List<DomElement> _clipContent(List<SaveClipEntry> clipStack,
 /// Only supported in non-WebKit browsers.
 String maskFilterToCanvasFilter(ui.MaskFilter? maskFilter) {
   assert(
-    browserEngine != BrowserEngine.webkit,
+    ui_web.browser.browserEngine != ui_web.BrowserEngine.webkit,
     'WebKit (Safari) does not support `filter` canvas property.',
   );
   if (maskFilter != null) {
     // Multiply by device-pixel ratio because the canvas' pixel width and height
     // are larger than its CSS width and height by device-pixel ratio.
-    return 'blur(${maskFilter.webOnlySigma * window.devicePixelRatio}px)';
+    return 'blur(${maskFilter.webOnlySigma * EngineFlutterDisplay.instance.devicePixelRatio}px)';
   } else {
     return 'none';
   }

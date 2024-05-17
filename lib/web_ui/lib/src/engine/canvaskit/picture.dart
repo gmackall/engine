@@ -7,12 +7,13 @@ import 'dart:typed_data';
 import 'package:ui/ui.dart' as ui;
 
 import '../scene_painting.dart';
+import '../util.dart';
 import 'canvas.dart';
 import 'canvaskit_api.dart';
 import 'image.dart';
 import 'native_memory.dart';
+import 'renderer.dart';
 import 'surface.dart';
-import 'surface_factory.dart';
 
 /// Implements [ui.Picture] on top of [SkPicture].
 class CkPicture implements ScenePicture {
@@ -99,9 +100,9 @@ class CkPicture implements ScenePicture {
   CkImage toImageSync(int width, int height) {
     assert(debugCheckNotDisposed('Cannot convert picture to image.'));
 
-    final Surface surface = SurfaceFactory.instance.pictureToImageSurface;
+    final Surface surface = CanvasKitRenderer.instance.pictureToImageSurface;
     final CkSurface ckSurface = surface
-        .createOrUpdateSurface(ui.Size(width.toDouble(), height.toDouble()));
+        .createOrUpdateSurface(BitmapSize(width, height));
     final CkCanvas ckCanvas = ckSurface.getCanvas();
     ckCanvas.clear(const ui.Color(0x00000000));
     ckCanvas.drawPicture(this);

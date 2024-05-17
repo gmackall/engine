@@ -34,7 +34,7 @@ std::string GetGoldenFilename() {
   return GetTestName() + ".png";
 }
 
-bool SaveScreenshot(std::unique_ptr<MetalScreenshot> screenshot) {
+bool SaveScreenshot(std::unique_ptr<Screenshot> screenshot) {
   if (!screenshot || !screenshot->GetBytes()) {
     return false;
   }
@@ -50,7 +50,8 @@ bool SaveScreenshot(std::unique_ptr<MetalScreenshot> screenshot) {
 
 class GoldenTests : public ::testing::Test {
  public:
-  GoldenTests() : screenshotter_(new MetalScreenshotter()) {}
+  GoldenTests()
+      : screenshotter_(new MetalScreenshotter(/*enable_wide_gamut=*/false)) {}
 
   MetalScreenshotter& Screenshotter() { return *screenshotter_; }
 
@@ -78,7 +79,7 @@ TEST_F(GoldenTests, ConicalGradient) {
 
   paint.stroke_width = 0.0;
   paint.style = Paint::Style::kFill;
-  canvas.DrawRect(Rect(10, 10, 250, 250), paint);
+  canvas.DrawRect(Rect::MakeXYWH(10, 10, 250, 250), paint);
   Picture picture = canvas.EndRecordingAsPicture();
 
   auto aiks_context =

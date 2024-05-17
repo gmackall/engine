@@ -22,13 +22,19 @@ class LayerScene implements ui.Scene {
 
   @override
   Future<ui.Image> toImage(int width, int height) {
-    final ui.Picture picture = layerTree.flatten();
+    final ui.Picture picture = layerTree.flatten(ui.Size(
+      width.toDouble(),
+      height.toDouble(),
+    ));
     return picture.toImage(width, height);
   }
 
   @override
   ui.Image toImageSync(int width, int height) {
-    final ui.Picture picture = layerTree.flatten();
+    final ui.Picture picture = layerTree.flatten(ui.Size(
+      width.toDouble(),
+      height.toDouble(),
+    ));
     return picture.toImageSync(width, height);
   }
 }
@@ -195,21 +201,6 @@ class LayerSceneBuilder implements ui.SceneBuilder {
   }) {
     final Matrix4 matrix = Matrix4.fromFloat32List(toMatrix32(matrix4));
     return pushLayer<TransformEngineLayer>(TransformEngineLayer(matrix));
-  }
-
-  @override
-  void setCheckerboardOffscreenLayers(bool checkerboard) {
-    // TODO(hterkelsen): implement setCheckerboardOffscreenLayers
-  }
-
-  @override
-  void setCheckerboardRasterCacheImages(bool checkerboard) {
-    // TODO(hterkelsen): implement setCheckerboardRasterCacheImages
-  }
-
-  @override
-  void setRasterizerTracingThreshold(int frameInterval) {
-    // TODO(hterkelsen): implement setRasterizerTracingThreshold
   }
 
   T pushLayer<T extends ContainerLayer>(T layer) {
