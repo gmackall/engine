@@ -34,8 +34,10 @@ import android.graphics.drawable.ColorDrawable;
 import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowManager;
+import android.widget.FrameLayout;
 import android.window.BackEvent;
 import android.window.OnBackAnimationCallback;
 import android.window.OnBackInvokedCallback;
@@ -44,6 +46,8 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
 import androidx.annotation.VisibleForTesting;
+import androidx.fragment.app.FragmentActivity;
+import androidx.fragment.app.FragmentManager;
 import androidx.lifecycle.Lifecycle;
 import androidx.lifecycle.LifecycleOwner;
 import androidx.lifecycle.LifecycleRegistry;
@@ -208,9 +212,14 @@ import java.util.List;
 // A number of methods in this class have the same implementation as FlutterFragmentActivity. These
 // methods are duplicated for readability purposes. Be sure to replicate any change in this class in
 // FlutterFragmentActivity, too.
-public class FlutterActivity extends Activity
+public class FlutterActivity extends FragmentActivity
     implements FlutterActivityAndFragmentDelegate.Host, LifecycleOwner {
   private static final String TAG = "FlutterActivity";
+
+  // FlutterFragment management.
+  private static final String TAG_FLUTTER_FRAGMENT = "flutter_fragment";
+
+  public static final int FRAGMENT_CONTAINER_ID = View.generateViewId();
 
   private boolean hasRegisteredBackCallback = false;
 
@@ -590,6 +599,8 @@ public class FlutterActivity extends Activity
           .putExtra(EXTRA_DESTROY_ENGINE_WITH_ACTIVITY, true);
     }
   }
+  // TODO(GMACKALL): unparsed from here till
+  @Nullable private FlutterFragment flutterFragment;
 
   // Delegate that runs all lifecycle and OS hook logic that is common between
   // FlutterActivity and FlutterFragment. See the FlutterActivityAndFragmentDelegate
@@ -628,13 +639,17 @@ public class FlutterActivity extends Activity
     return delegate;
   }
 
+  // TODO(GMACKALL): ---------------------- here
+
   @Override
   protected void onCreate(@Nullable Bundle savedInstanceState) {
     switchLaunchThemeForNormalTheme();
 
+    flutterFragment = retrieveExistingFlutterFragmentIfPossible();
+
     super.onCreate(savedInstanceState);
 
-    delegate = new FlutterActivityAndFragmentDelegate(this);
+    delegate = new FlutterActivityAndFragmentDelegate(this); // todo(gmackall): parse this out
     delegate.onAttach(this);
     delegate.onRestoreInstanceState(savedInstanceState);
 
@@ -793,12 +808,172 @@ public class FlutterActivity extends Activity
 
   @NonNull
   private View createFlutterView() {
+    // TODO(gmackall) parse this out
     return delegate.onCreateView(
         /* inflater=*/ null,
         /* container=*/ null,
         /* savedInstanceState=*/ null,
         /*flutterViewId=*/ FLUTTER_VIEW_ID,
         /*shouldDelayFirstAndroidViewDraw=*/ getRenderMode() == RenderMode.surface);
+  }
+
+  /** Returns a {@link FrameLayout} that is used as the content view of this activity. */
+  @NonNull
+  protected FrameLayout provideRootLayout(Context context) {
+    return new FrameLayout(context);
+  }
+
+  /**
+   * Creates a {@link FrameLayout} with an ID of {@code #FRAGMENT_CONTAINER_ID} that will contain
+   * the {@link FlutterFragment} displayed by this {@code FlutterFragmentActivity}.
+   *
+   * <p>
+   *
+   * @return the FrameLayout container
+   */
+  @NonNull
+  private View createFragmentContainer() {
+    FrameLayout container = provideRootLayout(this);
+    container.setId(FRAGMENT_CONTAINER_ID);
+    container.setLayoutParams(
+        new ViewGroup.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+    return container;
+  }
+
+  /**
+   * Retrieves the previously created {@link FlutterFragment} if possible.
+   *
+   * <p>If the activity is recreated, an existing {@link FlutterFragment} may already exist. Retain
+   * a reference to that {@link FlutterFragment} in the {@code #flutterFragment} field and avoid
+   * re-creating another {@link FlutterFragment}.
+   */
+  @VisibleForTesting
+  FlutterFragment retrieveExistingFlutterFragmentIfPossible() {
+    FragmentManager fragmentManager = getSupportFragmentManager();
+    return (FlutterFragment) fragmentManager.findFragmentByTag(TAG_FLUTTER_FRAGMENT);
+  }
+
+  /**
+   * Ensure that a {@link FlutterFragment} is attached to this {@code FlutterFragmentActivity}.
+   *
+   * <p>If no {@link FlutterFragment} exists in this {@code FlutterFragmentActivity}, then a {@link
+   * FlutterFragment} is created and added.
+   */
+  private void ensureFlutterFragmentCreated() {
+    if (flutterFragment == null) {
+      // If both activity and fragment have been destroyed, the activity restore may have
+      // already recreated a new instance of the fragment again via the FragmentActivity.onCreate
+      // and the FragmentManager.
+      flutterFragment = retrieveExistingFlutterFragmentIfPossible();
+    }
+    if (flutterFragment == null) {
+      // No FlutterFragment exists yet. This must be the initial Activity creation. We will create
+      // and add a new FlutterFragment to this Activity.
+      flutterFragment = createFlutterFragment();
+      FragmentManager fragmentManager = getSupportFragmentManager();
+      fragmentManager
+          .beginTransaction()
+          .add(FRAGMENT_CONTAINER_ID, flutterFragment, TAG_FLUTTER_FRAGMENT)
+          .commit();
+    }
+  }
+
+  /**
+   * Creates the instance of the {@link FlutterFragment} that this {@code FlutterFragmentActivity}
+   * displays.
+   *
+   * <p>Subclasses may override this method to return a specialization of {@link FlutterFragment}.
+   */
+  @NonNull
+  protected FlutterFragment createFlutterFragment() {
+    final BackgroundMode backgroundMode = getBackgroundMode();
+    final RenderMode renderMode = getRenderMode();
+    final TransparencyMode transparencyMode =
+        backgroundMode == BackgroundMode.opaque
+            ? TransparencyMode.opaque
+            : TransparencyMode.transparent;
+    final boolean shouldDelayFirstAndroidViewDraw = renderMode == RenderMode.surface;
+    final boolean shouldAutomaticallyHandleOnBackPressed = true;
+
+    if (getCachedEngineId() != null) {
+      Log.v(
+          TAG,
+          "Creating FlutterFragment with cached engine:\n"
+              + "Cached engine ID: "
+              + getCachedEngineId()
+              + "\n"
+              + "Will destroy engine when Activity is destroyed: "
+              + shouldDestroyEngineWithHost()
+              + "\n"
+              + "Background transparency mode: "
+              + backgroundMode
+              + "\n"
+              + "Will attach FlutterEngine to Activity: "
+              + shouldAttachEngineToActivity());
+
+      return FlutterFragment.withCachedEngine(getCachedEngineId())
+          .renderMode(renderMode)
+          .transparencyMode(transparencyMode)
+          .handleDeeplinking(shouldHandleDeeplinking())
+          .shouldAttachEngineToActivity(shouldAttachEngineToActivity())
+          .destroyEngineWithFragment(shouldDestroyEngineWithHost())
+          .shouldDelayFirstAndroidViewDraw(shouldDelayFirstAndroidViewDraw)
+          .shouldAutomaticallyHandleOnBackPressed(shouldAutomaticallyHandleOnBackPressed)
+          .build();
+    } else {
+      Log.v(
+          TAG,
+          "Creating FlutterFragment with new engine:\n"
+              + "Cached engine group ID: "
+              + getCachedEngineGroupId()
+              + "\n"
+              + "Background transparency mode: "
+              + backgroundMode
+              + "\n"
+              + "Dart entrypoint: "
+              + getDartEntrypointFunctionName()
+              + "\n"
+              + "Dart entrypoint library uri: "
+              + (getDartEntrypointLibraryUri() != null ? getDartEntrypointLibraryUri() : "\"\"")
+              + "\n"
+              + "Initial route: "
+              + getInitialRoute()
+              + "\n"
+              + "App bundle path: "
+              + getAppBundlePath()
+              + "\n"
+              + "Will attach FlutterEngine to Activity: "
+              + shouldAttachEngineToActivity());
+
+      if (getCachedEngineGroupId() != null) {
+        return FlutterFragment.withNewEngineInGroup(getCachedEngineGroupId())
+            .dartEntrypoint(getDartEntrypointFunctionName())
+            .initialRoute(getInitialRoute())
+            .handleDeeplinking(shouldHandleDeeplinking())
+            .renderMode(renderMode)
+            .transparencyMode(transparencyMode)
+            .shouldAttachEngineToActivity(shouldAttachEngineToActivity())
+            .shouldDelayFirstAndroidViewDraw(shouldDelayFirstAndroidViewDraw)
+            .shouldAutomaticallyHandleOnBackPressed(shouldAutomaticallyHandleOnBackPressed)
+            .build();
+      }
+
+      return FlutterFragment.withNewEngine()
+          .dartEntrypoint(getDartEntrypointFunctionName())
+          .dartLibraryUri(getDartEntrypointLibraryUri())
+          .dartEntrypointArgs(getDartEntrypointArgs())
+          .initialRoute(getInitialRoute())
+          .appBundlePath(getAppBundlePath())
+          .flutterShellArgs(FlutterShellArgs.fromIntent(getIntent()))
+          .handleDeeplinking(shouldHandleDeeplinking())
+          .renderMode(renderMode)
+          .transparencyMode(transparencyMode)
+          .shouldAttachEngineToActivity(shouldAttachEngineToActivity())
+          .shouldDelayFirstAndroidViewDraw(shouldDelayFirstAndroidViewDraw)
+          .shouldAutomaticallyHandleOnBackPressed(shouldAutomaticallyHandleOnBackPressed)
+          .build();
+    }
   }
 
   private void configureStatusBarForFullscreenFlutterExperience() {
@@ -815,6 +990,10 @@ public class FlutterActivity extends Activity
     if (stillAttachedForEvent("onStart")) {
       delegate.onStart();
     }
+    // TODO(gmackall) stillAttachedForEvent everywhere too maybe?
+    if (flutterFragment != null) {
+      flutterFragment.onStart();
+    }
   }
 
   @Override
@@ -824,6 +1003,9 @@ public class FlutterActivity extends Activity
     if (stillAttachedForEvent("onResume")) {
       delegate.onResume();
     }
+    if (flutterFragment != null) {
+      flutterFragment.onResume();
+    }
   }
 
   @Override
@@ -831,6 +1013,9 @@ public class FlutterActivity extends Activity
     super.onPostResume();
     if (stillAttachedForEvent("onPostResume")) {
       delegate.onPostResume();
+    }
+    if (flutterFragment != null) {
+      flutterFragment.onPostResume();
     }
   }
 
@@ -841,6 +1026,9 @@ public class FlutterActivity extends Activity
       delegate.onPause();
     }
     lifecycle.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE);
+    if (flutterFragment != null) {
+      flutterFragment.onPause();
+    }
   }
 
   @Override
@@ -850,6 +1038,9 @@ public class FlutterActivity extends Activity
       delegate.onStop();
     }
     lifecycle.handleLifecycleEvent(Lifecycle.Event.ON_STOP);
+    if (flutterFragment != null) {
+      flutterFragment.onStop();
+    }
   }
 
   @Override
@@ -857,6 +1048,9 @@ public class FlutterActivity extends Activity
     super.onSaveInstanceState(outState);
     if (stillAttachedForEvent("onSaveInstanceState")) {
       delegate.onSaveInstanceState(outState);
+    }
+    if (flutterFragment != null) {
+      flutterFragment.onSaveInstanceState(outState);
     }
   }
 
@@ -877,6 +1071,7 @@ public class FlutterActivity extends Activity
       delegate.release();
       delegate = null;
     }
+    // TODO(gmackall): anything for fragment to do here?
   }
 
   @Override
@@ -892,6 +1087,10 @@ public class FlutterActivity extends Activity
       delegate.onDestroyView();
       delegate.onDetach();
     }
+    if (flutterFragment != null) {
+      flutterFragment.onDestroyView();
+      flutterFragment.onDetach();
+    }
   }
 
   @Override
@@ -903,12 +1102,19 @@ public class FlutterActivity extends Activity
     }
     release();
     lifecycle.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY);
+    if (flutterFragment != null) {
+      flutterFragment.onDestroy();
+    }
   }
 
   @Override
   protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+    super.onActivityResult(requestCode, resultCode, data);
     if (stillAttachedForEvent("onActivityResult")) {
       delegate.onActivityResult(requestCode, resultCode, data);
+    }
+    if (flutterFragment != null) {
+      flutterFragment.onActivityResult(requestCode, resultCode, data);
     }
   }
 
@@ -919,12 +1125,18 @@ public class FlutterActivity extends Activity
     if (stillAttachedForEvent("onNewIntent")) {
       delegate.onNewIntent(intent);
     }
+    if (flutterFragment != null) {
+      flutterFragment.onNewIntent(intent);
+    }
   }
 
   @Override
   public void onBackPressed() {
     if (stillAttachedForEvent("onBackPressed")) {
       delegate.onBackPressed();
+    }
+    if (flutterFragment != null) {
+      flutterFragment.onBackPressed();
     }
   }
 
@@ -934,6 +1146,7 @@ public class FlutterActivity extends Activity
     if (stillAttachedForEvent("startBackGesture")) {
       delegate.startBackGesture(backEvent);
     }
+    // TODO:(gmackall) ff doesn't have this - why? Add?
   }
 
   @TargetApi(API_LEVELS.API_34)
@@ -942,6 +1155,7 @@ public class FlutterActivity extends Activity
     if (stillAttachedForEvent("updateBackGestureProgress")) {
       delegate.updateBackGestureProgress(backEvent);
     }
+    // TODO:(gmackall) ff doesn't have this - why? Add?
   }
 
   @TargetApi(API_LEVELS.API_34)
@@ -966,12 +1180,18 @@ public class FlutterActivity extends Activity
     if (stillAttachedForEvent("onRequestPermissionsResult")) {
       delegate.onRequestPermissionsResult(requestCode, permissions, grantResults);
     }
+    if (flutterFragment != null) {
+      flutterFragment.onRequestPermissionsResult(requestCode, permissions, grantResults);
+    }
   }
 
   @Override
   public void onUserLeaveHint() {
     if (stillAttachedForEvent("onUserLeaveHint")) {
       delegate.onUserLeaveHint();
+    }
+    if (flutterFragment != null) {
+      flutterFragment.onUserLeaveHint();
     }
   }
 
@@ -981,6 +1201,7 @@ public class FlutterActivity extends Activity
     if (stillAttachedForEvent("onWindowFocusChanged")) {
       delegate.onWindowFocusChanged(hasFocus);
     }
+    // TODO:(gmackall) ff doesn't have this - why? Add?
   }
 
   @Override
@@ -988,6 +1209,9 @@ public class FlutterActivity extends Activity
     super.onTrimMemory(level);
     if (stillAttachedForEvent("onTrimMemory")) {
       delegate.onTrimMemory(level);
+    }
+    if (flutterFragment != null) {
+      flutterFragment.onTrimMemory(level);
     }
   }
 
