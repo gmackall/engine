@@ -28,6 +28,7 @@ print_usage () {
 }
 
 first_argument=$1
+third_argument=$3
 # Validate version or argument is provided.
 if [[ $first_argument == "" ]]; then
   print_usage
@@ -63,7 +64,7 @@ if [[ ! -d "$sdk_path/cmdline-tools" ]]; then
   exit 1
 fi
 
-platforms=("linux" "macosx" "windows")
+platforms=("macosx")
 package_file_name="packages.txt"
 
 # Find the sdkmanager in cmdline-tools. We default to using latest if available.
@@ -138,6 +139,16 @@ for platform in "${platforms[@]}"; do
   # Accept all licenses to ensure they are generated and uploaded.
   yes "y" | $sdkmanager_path --licenses --sdk_root=$sdk_root
   cp -r "$sdk_root/licenses" "$upload_dir/sdk"
+
+  if [[ $third_argument == "dry" ]]; then
+      echo "DRY RUNNING"
+      rm -rf /Users/mackall/development/engine/src/flutter/third_party/android_tools/sdk/
+      rm -rf /Users/mackall/development/engine/src/flutter/third_party/android_tools/ndk/
+      cp -r $upload_dir/ /Users/mackall/development/engine/src/flutter/third_party/android_tools/
+      unset REPO_OS_OVERRIDE
+      rm -rf $temp_dir
+      exit 1
+  fi
 
   archs=("amd64")
   if [[ $platform == "macosx" ]]; then
