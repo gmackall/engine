@@ -394,11 +394,9 @@ import java.util.List;
       flutterView = new FlutterView(host.getContext(), flutterTextureView);
     }
 
-    Log.e("HI GRAY", "WE ARE IN THE FIRST CASE");
     if (Build.VERSION.SDK_INT >= API_LEVELS.API_35) {
       Log.e("HI GRAY", "SETTING TO AUTO SENSITIVITY");
       flutterView.setContentSensitivity(View.CONTENT_SENSITIVITY_AUTO);
-      // flutterView.setAutofillHints(View.AUTOFILL_HINT_PASSWORD);
     }
 
     // Add listener to be notified when Flutter renders its first frame.
