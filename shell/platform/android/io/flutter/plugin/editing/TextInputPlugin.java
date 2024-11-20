@@ -780,7 +780,8 @@ public class TextInputPlugin implements ListenableEditingState.EditingStateWatch
       // See https://github.com/flutter/flutter/issues/98505.
       if (autofill.hints.length > 0) {
         child.setAutofillHints(autofill.hints);
-        Log.e("HI GRAY", "ALSO SETTING AUTOFILL HINTS ON MAIN VIEW!!! SETTING TO: " + autofill.hints);
+        Log.e(
+            "HI GRAY", "ALSO SETTING AUTOFILL HINTS ON MAIN VIEW!!! SETTING TO: " + autofill.hints);
         mView.setAutofillHints(autofill.hints);
       }
       child.setAutofillType(View.AUTOFILL_TYPE_TEXT);

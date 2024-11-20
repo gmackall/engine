@@ -399,7 +399,7 @@ import java.util.List;
     if (Build.VERSION.SDK_INT >= API_LEVELS.API_35) {
       Log.e("HI GRAY", "SETTING TO AUTO SENSITIVITY");
       flutterView.setContentSensitivity(View.CONTENT_SENSITIVITY_AUTO);
-      //flutterView.setAutofillHints(View.AUTOFILL_HINT_PASSWORD);
+      // flutterView.setAutofillHints(View.AUTOFILL_HINT_PASSWORD);
     }
 
     // Add listener to be notified when Flutter renders its first frame.
